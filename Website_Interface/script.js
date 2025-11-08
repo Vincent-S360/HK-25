@@ -444,6 +444,400 @@ auth.onAuthStateChanged((user) => {
   }
 });
 
+// Event Listeners
+document.addEventListener('DOMContentLoaded', function() {
+  // Cache initial translation texts and set language from selector
+  cacheInitialTranslations();
+  // Load persisted page language from localStorage if present
+  const storedLang = localStorage.getItem('pageLanguage');
+  if (pageLanguageSelect) {
+    currentPageLanguage = storedLang || pageLanguageSelect.value || 'en';
+    applyPageLanguage(currentPageLanguage);
+    // Persist language preference when changed (for returning users)
+    pageLanguageSelect.addEventListener('change', (e) => {
+      currentPageLanguage = e.target.value || 'en';
+      applyPageLanguage(currentPageLanguage);
+      // Persist locally and to Firestore when logged in
+      try { localStorage.setItem('pageLanguage', currentPageLanguage); } catch (e) {}
+      if (currentUser) {
+        db.collection('users').doc(currentUser.email).set({
+          prefLanguage: currentPageLanguage
+        }, { merge: true }).catch(err => console.error('Persist prefLanguage error:', err));
+      }
+      // Keep speech recognition language in sync
+      if (recognition) {
+        recognition.lang = currentPageLanguage === 'kn' ? 'kn-IN' : 'en-IN';
+      }
+    });
+  }
+  // Set initial timestamp
+  initialTimestamp.textContent = new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  // Setup hamburger menu
+  setupHamburgerMenu();
+
+  // Initialize connectivity badge
+  try { initConnectivityBadge(); } catch (e) { console.warn('Connectivity badge init failed:', e); }
+
+  // Initialize speech recognition
+  initSpeechRecognition();
+  
+  // Get available voices for speech synthesis
+  if ('speechSynthesis' in window) {
+    // Chrome loads voices asynchronously
+    window.speechSynthesis.onvoiceschanged = () => {
+      availableVoices = window.speechSynthesis.getVoices();
+    };
+    // Try to get voices right away (for Firefox)
+    availableVoices = window.speechSynthesis.getVoices();
+  }
+  
+  // Voice On/Off toggle button
+  const voiceToggleBtn = document.getElementById('voice-toggle');
+  if (voiceToggleBtn) {
+    voiceToggleBtn.addEventListener('click', () => {
+      voiceEnabled = !voiceEnabled;
+      // Update UI
+      voiceToggleBtn.title = voiceEnabled ? 'Voice On' : 'Voice Off';
+      voiceToggleBtn.innerHTML = voiceEnabled ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+      // If turning off, stop any ongoing speech and listening
+      if (!voiceEnabled) {
+        try { window.speechSynthesis.cancel(); isSpeaking = false; } catch (e) {}
+        if (isListening && recognition) {
+          try { recognition.stop(); } catch (e) {}
+          isListening = false;
+          updateMicButtonUI();
+        }
+        showToast('Voice disabled', 'info');
+      } else {
+        showToast('Voice enabled', 'info');
+      }
+    });
+  }
+
+  // Start button click (gated by auth)
+  startButton.addEventListener('click', () => {
+    if (currentUser) {
+      openChatInterface();
+    } else {
+      pendingChatOpen = true;
+      showAuthModal();
+  }
+
+  // Wire AI Test button (Firebase AI Logic SDK)
+  const aiTestBtn = document.getElementById('header-ai-test');
+  if (aiTestBtn) {
+    aiTestBtn.addEventListener('click', async () => {
+      try {
+        if (!window.firebaseAI || !window.firebaseAI.runGeminiTest) {
+          showToast('Firebase AI Logic not loaded', 'error');
+          return;
+        }
+        showToast('Running AI test…', 'info');
+        await window.firebaseAI.runGeminiTest();
+      } catch (err) {
+        console.error('AI test failed:', err);
+        showToast('AI test failed', 'error');
+      }
+    });
+  }
+
+  // Quick actions click handlers
+  qaCrop && qaCrop.addEventListener('click', () => handleQuickAction('crop'));
+  qaSchemes && qaSchemes.addEventListener('click', () => handleQuickAction('schemes'));
+  qaAgri && qaAgri.addEventListener('click', () => handleQuickAction('agri'));
+  qaWeather && qaWeather.addEventListener('click', () => handleQuickAction('weather'));
+  qaEmotional && qaEmotional.addEventListener('click', () => handleQuickAction('emotional'));
+  qaProfit && qaProfit.addEventListener('click', () => handleQuickAction('profit'));
+  qaExport && qaExport.addEventListener('click', () => handleQuickAction('export'));
+  qaExhort && qaExhort.addEventListener('click', () => handleQuickAction('exhort'));
+  qaMarket && qaMarket.addEventListener('click', () => handleQuickAction('market'));
+});
+
+  // CTA button click (gated by auth)
+  ctaStartButton.addEventListener('click', () => {
+    if (currentUser) {
+      openChatInterface();
+    } else {
+      pendingChatOpen = true;
+      showAuthModal();
+    }
+  });
+  
+  // Back button click
+  backButton.addEventListener('click', () => {
+    // Stop any ongoing speech and listening
+    try { window.speechSynthesis.cancel(); isSpeaking = false; } catch (e) {}
+    if (isListening && recognition) {
+      try { recognition.stop(); } catch (e) {}
+      isListening = false;
+      updateMicButtonUI();
+    }
+    // Clear any pending silence prompt
+    if (silenceTimeoutId) { try { clearTimeout(silenceTimeoutId); } catch (e) {} silenceTimeoutId = null; }
+    // Reset greeting state so next entry greets afresh
+    initialGreetingSpoken = false;
+    chatInterface.classList.add('hidden');
+    landingPage.classList.remove('hidden');
+    showToast('Voice stopped. You can resume chat anytime.', 'info');
+  });
+  
+  // Send button click
+  sendButton.addEventListener('click', () => { recordInteraction(); sendMessage(); });
+  
+  // Enter key to send message
+  messageInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      hideQuickActions();
+      recordInteraction();
+      sendMessage();
+    }
+  });
+  // Hide quick actions as soon as user starts typing a custom message
+  messageInput.addEventListener('input', (e) => {
+    if (e.target.value && e.target.value.trim().length > 0) {
+      hideQuickActions();
+      recordInteraction();
+    }
+  });
+  
+  // Mic button click
+  micButton.addEventListener('click', () => { recordInteraction(); toggleSpeechRecognition(); });
+  
+  // Plus button click -> toggle dropdown menu
+  if (plusButton && plusMenu) {
+    plusButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = plusMenu.classList.toggle('hidden');
+      plusButton.setAttribute('aria-expanded', !isHidden);
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!plusButton.contains(e.target) && !plusMenu.contains(e.target)) {
+        plusMenu.classList.add('hidden');
+        plusButton.setAttribute('aria-expanded', 'false');
+      }
+    });
+    
+    // Camera option click
+    if (cameraOption) {
+      cameraOption.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        plusMenu.classList.add('hidden');
+        plusButton.setAttribute('aria-expanded', 'false');
+        // Try instant capture via MediaDevices; fallback to file input
+        try {
+          const blob = await captureStillViaCamera();
+          if (blob) {
+            // Build a File-like object for downstream flow
+            const file = new File([blob], 'capture.jpg', { type: blob.type || 'image/jpeg' });
+            await handleImageUpload(file, true);
+            return;
+          }
+        } catch (e) {
+          console.warn('Instant camera capture failed, falling back:', e);
+        }
+        try { 
+          showToast('Select or take a photo', 'info', 2000); 
+          cameraInput.click(); 
+        } catch (e) {}
+      });
+    }
+    
+    // Upload option click
+    if (uploadOption) {
+      uploadOption.addEventListener('click', (e) => {
+        e.stopPropagation();
+        plusMenu.classList.add('hidden');
+        plusButton.setAttribute('aria-expanded', 'false');
+        fileInput.click();
+      });
+    }
+    
+    // Camera input change handler
+    if (cameraInput) {
+      cameraInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        await handleImageUpload(file, true);
+        // Reset input so the same file can be reselected
+        try { e.target.value = ''; } catch (e2) {}
+      });
+    }
+    
+    // File input change handler
+    if (fileInput) {
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        await handleImageUpload(file, false);
+        // Reset input so the same file can be reselected
+        try { e.target.value = ''; } catch (e2) {}
+      });
+    }
+  }
+  
+  // Language select change (removed from UI; keep guard)
+  if (languageSelect) {
+    languageSelect.addEventListener('change', (e) => {
+      currentLanguage = e.target.value;
+      if (recognition) {
+        recognition.lang = currentLanguage;
+      }
+    });
+  }
+  
+  // Page language select change (sync chat speech language too)
+  pageLanguageSelect.addEventListener('change', (e) => {
+    currentPageLanguage = e.target.value;
+    applyPageLanguage(currentPageLanguage);
+    currentLanguage = currentPageLanguage === 'kn' ? 'kn-IN' : 'en-IN';
+    if (recognition) {
+      recognition.lang = currentLanguage;
+    }
+  });
+
+  // FAQ accordion toggling
+  document.querySelectorAll('.accordion-item').forEach((item) => {
+    const trigger = item.querySelector('.accordion-trigger');
+    const content = item.querySelector('.accordion-content');
+    if (trigger && content) {
+      // Ensure fully expanded content remains readable by removing max-height after transition
+      content.addEventListener('transitionend', (e) => {
+        if (e.propertyName === 'max-height' && item.classList.contains('active')) {
+          content.style.maxHeight = 'none';
+        }
+      });
+      trigger.addEventListener('click', () => {
+        const isActive = item.classList.toggle('active');
+        if (isActive) {
+          // Start with computed height to animate open, then transitionend sets to 'none'
+          content.style.maxHeight = content.scrollHeight + 'px';
+        } else {
+          // If max-height is 'none', set current height first to enable closing animation
+          const currentHeight = content.scrollHeight + 'px';
+          content.style.maxHeight = currentHeight;
+          requestAnimationFrame(() => {
+            content.style.maxHeight = '0';
+          });
+        }
+      });
+    }
+  });
+    
+  // Auth modal close
+  closeModal.addEventListener('click', hideAuthModal);
+
+  // Close modal when clicking on overlay (outside the card)
+  authModal.addEventListener('click', (e) => {
+    if (e.target === authModal) {
+      hideAuthModal();
+    }
+  });
+  
+  // Close modal on ESC key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !authModal.classList.contains('hidden')) {
+      hideAuthModal();
+    }
+  });
+
+  // Header auth controls events
+  headerLogin && headerLogin.addEventListener('click', () => {
+    showAuthModal();
+    setAuthTab('login');
+  });
+
+  headerSignup && headerSignup.addEventListener('click', () => {
+    showAuthModal();
+    setAuthTab('signup');
+  });
+
+  const doLogout = () => {
+    auth.signOut().then(() => {
+      showToast('Logged out successfully', 'info');
+      // Stop any ongoing speech or listening
+      try { window.speechSynthesis.cancel(); isSpeaking = false; } catch (e) {}
+      if (isListening && recognition) {
+        try { recognition.stop(); } catch (e) {}
+        isListening = false;
+        updateMicButtonUI();
+      }
+      // Clear any pending silence prompt
+      if (silenceTimeoutId) { try { clearTimeout(silenceTimeoutId); } catch (e) {} silenceTimeoutId = null; }
+      // Return to landing page if chat is open
+      landingPage.classList.remove('hidden');
+      chatInterface.classList.add('hidden');
+    }).catch(err => showToast(err.message, 'error'));
+  };
+  
+  headerLogout && headerLogout.addEventListener('click', doLogout);
+  chatLogoutButton && chatLogoutButton.addEventListener('click', doLogout);
+  
+
+  
+  // Auth tabs
+  authTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active class from all tabs
+      authTabs.forEach(t => t.classList.remove('active'));
+      // Add active class to clicked tab
+      tab.classList.add('active');
+      
+      // Show corresponding form
+      const tabName = tab.dataset.tab;
+      if (tabName === 'login') {
+        loginForm.classList.remove('hidden');
+        signupForm.classList.add('hidden');
+      } else {
+        loginForm.classList.add('hidden');
+        signupForm.classList.remove('hidden');
+      }
+    });
+  });
+  
+  // Login button click
+  loginButton.addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    if (!email || !password) {
+      showToast('Please fill in all fields', 'error');
+      return;
+    }
+    
+    const success = await loginUser(email, password);
+    if (success) {
+      hideAuthModal();
+    }
+  });
+  
+  // Signup button click
+  signupButton.addEventListener('click', async () => {
+    const name = document.getElementById('signup-name').value;
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    
+    if (!name || !email || !password) {
+      showToast('Please fill in all fields', 'error');
+      return;
+    }
+    
+    const success = await signupUser(name, email, password);
+    if (success) {
+      hideAuthModal();
+    }
+  });
+});
+
+
+
+
 
 
 

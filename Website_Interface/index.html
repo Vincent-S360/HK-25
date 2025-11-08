@@ -152,8 +152,246 @@
               </div>
             </div>
             
+            <div class="accordion-item">
+              <button class="accordion-trigger">
+                <span data-translate="faq3">Can I use voice input instead of typing?</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="accordion-content">
+                <p data-translate="faq3Answer">Yes! You can speak to SALAHE in either English or Kannada. Click the microphone button, speak your question, and SALAHE will respond. You can also have responses read aloud to you.</p>
+              </div>
+            </div>
+            
+            <div class="accordion-item">
+              <button class="accordion-trigger">
+                <span data-translate="faq4">What topics can I ask about?</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="accordion-content">
+                <p data-translate="faq4Answer">You can ask about crop selection, pest management, weather adaptation, sustainable farming practices, and get emotional support tailored to your farming needs.</p>
+              </div>
+            </div>
+            
+            <div class="accordion-item">
+              <button class="accordion-trigger">
+                <span data-translate="faq5">Is SALAHE free to use?</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="accordion-content">
+                <p data-translate="faq5Answer">Yes, SALAHE is completely free for all farmers to use.</p>
+              </div>
+            </div>
+            
+            <div class="accordion-item">
+              <button class="accordion-trigger">
+                <span data-translate="faq6">How accurate is the information provided?</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="accordion-content">
+                <p data-translate="faq6Answer">SALAHE provides information based on agricultural best practices and research. We continuously update our knowledge base to ensure accuracy and relevance.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Call to Action Section -->
+    <div class="cta-section">
+      <div class="cta-container">
+        <h2 data-translate="ctaTitle">Ready to Get Started?</h2>
+        <p data-translate="ctaSubtitle">Join thousands of farmers who are already benefiting from SALAHE's personalized farming advice</p>
+        <button class="cta-button" id="cta-start-button" data-translate="ctaButton">Start Using SALAHE Now</button>
+      </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="site-footer">
+      <p>&copy; 2025 SALAHE - Your Farming Companion. All rights reserved.</p>
+    </footer>
 
-      
+    <!-- Chat Interface -->
+    <div id="chat-interface" class="hidden">
+      <div class="chat-container">
+        <!-- Header -->
+        <div class="chat-header">
+          <button id="back-button">
+            <i class="fas fa-arrow-left"></i>
+            <span data-translate="back">Back</span>
+          </button>
+          
+          <button id="hamburger-menu" class="hamburger-icon">
+            <i class="fas fa-bars"></i>
+          </button>
+          
+          <div class="chat-title">
+            <div class="chat-logo">
+              <i class="fas fa-seedling"></i>
+            </div>
+            <h2>Sada</h2>
+          </div>
+          
+          <div class="language-selector">
+            <!-- Connectivity Badge -->
+            <div id="connectivity-badge" class="connectivity-badge offline" title="Connection status">
+              <span class="dot"></span>
+              <span id="connectivity-text">Offline</span>
+            </div>
+            <button id="voice-toggle" class="voice-toggle" title="Voice On"><i class="fas fa-volume-up"></i></button>
+            <button id="chat-logout-button" class="logout-btn hidden">Logout</button>
+          </div>
+        </div>
+        
+        <!-- Sidebar Menu -->
+        <div id="sidebar-menu" class="sidebar hidden">
+          <div class="sidebar-header">
+            <h3 data-translate="menu">Menu</h3>
+            <button id="close-sidebar" class="close-sidebar">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="sidebar-content">
+            <div class="sidebar-section">
+              <button id="new-chat" class="sidebar-button">
+                <i class="fas fa-plus"></i>
+                <span data-translate="newChat">New Chat</span>
+              </button>
+            </div>
+            <div class="sidebar-section">
+              <h4 data-translate="chatHistory">Chat History</h4>
+              <div id="chat-history-list" class="chat-history-list">
+                <!-- Chat history items will be added here dynamically -->
+              </div>
+            </div>
+            <div class="sidebar-section">
+              <h4 data-translate="options">Options</h4>
+              <button id="clear-history" class="sidebar-button">
+                <i class="fas fa-trash"></i>
+                <span data-translate="clearHistory">Clear History</span>
+              </button>
+              <button id="settings-button" class="sidebar-button">
+                <i class="fas fa-cog"></i>
+                <span data-translate="settings">Settings</span>
+              </button>
+              <button id="delete-account" class="sidebar-button danger-button">
+                <i class="fas fa-user-slash"></i>
+                <span data-translate="deleteAccount">Delete Account</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Overlay for sidebar -->
+        <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
+        
+        <!-- Messages Container -->
+        <div id="messages-container">
+          <!-- Initial message -->
+          <div class="message assistant-message">
+            <div class="avatar assistant-avatar">
+              <i class="fas fa-robot"></i>
+            </div>
+            <div class="message-content">
+              <div class="message-bubble">
+                <p data-translate="chatGreeting">Hello! I am Sada, your farming companion. How can I help you today?</p>
+              </div>
+              <span class="timestamp" id="initial-timestamp"></span>
+            </div>
+          </div>
 
+          <!-- Quick Action Bubbles -->
+          <div id="quick-actions" class="quick-actions">
+            <button class="qa-btn" data-action="crop" id="qa-crop" data-translate="qaCrop">Crop Recommendation</button>
+            <button class="qa-btn" data-action="schemes" id="qa-schemes" data-translate="qaSchemes">Government Schemes</button>
+            <button class="qa-btn" data-action="agri" id="qa-agri" data-translate="qaAgri">Agricultural Suggestions</button>
+            <button class="qa-btn" data-action="weather" id="qa-weather" data-translate="qaWeather">Weather-based Suggestions on Crops</button>
+            <button class="qa-btn" data-action="emotional" id="qa-emotional" data-translate="qaEmotional">Emotional Support</button>
+            <button class="qa-btn" data-action="profit" id="qa-profit" data-translate="qaProfit">Smart Profit Calculator</button>
+            <button class="qa-btn" data-action="export" id="qa-export" data-translate="qaExport">Export Markets & Buyers</button>
+            <button class="qa-btn" data-action="exhort" id="qa-exhort" data-translate="qaExhort">Exotic Insights</button>
+            <button class="qa-btn" data-action="market" id="qa-market" data-translate="qaMarket">Market Advice</button>
+          </div>
+          <!-- Messages will be added here dynamically -->
+        </div>
+        
+        <!-- Input Area -->
+        <div class="input-area">
+          <div class="plus-button-container">
+            <button id="plus-button" title="Add photo or file" aria-label="Add photo or file" aria-expanded="false" aria-haspopup="true">
+              <i class="fas fa-plus"></i>
+            </button>
+            <div id="plus-menu" class="plus-menu hidden" role="menu" aria-label="Photo options">
+              <button class="plus-menu-item" id="camera-option" role="menuitem" title="Take a photo with camera" aria-label="Take a photo with camera">
+                <i class="fas fa-camera"></i>
+                <span>Camera</span>
+              </button>
+              <button class="plus-menu-item" id="upload-option" role="menuitem" title="Upload a file from device" aria-label="Upload a file from device">
+                <i class="fas fa-upload"></i>
+                <span>Upload File</span>
+              </button>
+            </div>
+          </div>
+          <input id="camera-input" type="file" accept="image/*" capture="environment" class="hidden" aria-label="Camera input" />
+          <input id="file-input" type="file" accept="image/*" class="hidden" aria-label="File upload input" />
+          <button id="mic-button" title="Voice input" aria-label="Voice input">
+            <i class="fas fa-microphone"></i>
+          </button>
+          
+          <div class="message-input-container">
+            <textarea id="message-input" rows="1" placeholder="Type your message..."></textarea>
+          </div>
+          
+          <button id="send-button">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth Modal -->
+  <div id="auth-modal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-modal">&times;</span>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Login</button>
+        <button class="auth-tab" data-tab="signup">Sign Up</button>
+      </div>
+      <div id="login-form" class="auth-form">
+        <h3>Welcome Back</h3>
+        <input type="email" id="login-email" placeholder="Email" required>
+        <input type="password" id="login-password" placeholder="Password" required>
+        <button id="login-button" class="auth-button">Login</button>
+        <p class="auth-switch">
+          Don't have an account? 
+          <a href="#" id="login-switch-to-signup">Sign up</a>
+        </p>
+      </div>
+      <div id="signup-form" class="auth-form hidden">
+        <h3>Create Account</h3>
+        <input type="text" id="signup-name" placeholder="Full Name" required>
+        <input type="email" id="signup-email" placeholder="Email" required>
+        <input type="password" id="signup-password" placeholder="Password" required>
+        <button id="signup-button" class="auth-button">Sign Up</button>
+        <p class="auth-switch">
+          Already have an account? 
+          <a href="#" id="signup-switch-to-login">Login</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <!-- Firebase AI Logic modular SDK (Gemini Developer API backend) -->
+  <script type="module" src="ai.js"></script>
+  
+  <script src="script.js"></script>
+  <script src="voice.js"></script>
 </body>
 </html>

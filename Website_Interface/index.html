@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+     <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SALAHE - Your Farming Companion</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app" class="min-h-screen">
+    <!-- Landing Page -->             
+    <div id="landing-page">
+      <!-- Language Selector -->
+      <div class="language-selector-header">
+        <select id="page-language-select" class="language-dropdown">
+          <option value="en">English</option>
+          <option value="kn">ಕನ್ನಡ</option>
+        </select>
+      </div>
+<!-- Auth Controls Header -->
+      <div class="auth-controls-header">
+        <span id="header-user" class="user-label hidden"></span>
+        <button id="header-login" class="auth-btn">Login</button>
+        <button id="header-signup" class="auth-btn">Sign Up</button>
+        <button id="header-logout" class="logout-btn hidden">Logout</button>
+        <button id="header-ai-test" class="auth-btn" title="Run Firebase AI Logic test">AI Test</button>
+      </div>
+      
+      <div class="hero-section">
+        <div class="content">
+          <!-- Logo and Title -->
+          <div class="logo-title fade-in-down">
+            <div class="logo-container">
+              <i class="fas fa-seedling logo-icon"></i>
+            </div>
+            <img src="images/Logo.png" alt="SALAHE" class="site-logo" />
+            <p class="subtitle">ನಿಮ್ಮ ಕೃಷಿ ಸ್ನೇಹಿತ | Your Farming Companion</p>
+          </div>
+            <!-- Description -->
+           <div class="description fade-in">
+            <p>ಕೃಷಿ ಬಗ್ಗೆ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಿ, ಸಲಹೆಗಳನ್ನು ಪಡೆಯಿರಿ ಮತ್ತು ಬೆಂಬಲವನ್ನು ಪಡೆಯಿರಿ</p>
+            <p>Ask farming questions, get advice, and receive support</p>
+          </div>
+ 
+         
+          <!-- Features -->
+          <div class="features fade-in">
+            <div class="feature-card">
+              <i class="fas fa-comment feature-icon"></i>
+              <h3>Smart Chat</h3>
+              <p>AI-powered answers to all your farming questions</p>
+            </div>
+            
+            <div class="feature-card">
+              <i class="fas fa-microphone feature-icon"></i>
+              <h3>Voice Support</h3>
+              <p>Speak naturally in Kannada or English</p>
+            </div>
+            
+            <div class="feature-card">
+              <i class="fas fa-heart feature-icon"></i>
+              <h3>Emotional Support</h3>
+              <p>We're here to listen and help</p>
+            </div>
+          </div>
+          
+          <!-- CTA Button -->
+          <div class="cta scale-in">
+            <button id="start-button">Let's Begin / ಪ್ರಾರಂಭಿಸೋಣ</button>
+          </div>
+          
+          <!-- Scroll Indicator -->
+          <div class="scroll-indicator fade-in">
+            <p data-translate="learnMoreScroll">Learn more about SALAHE</p>
+            <div class="bounce">
+              <i class="fas fa-chevron-down"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Learn More Section -->
+      <div class="learn-more-section">
+        <div class="learn-more-container">
+          <h2 class="section-title" data-translate="aboutTitle">About SALAHE</h2>
+          <div class="section-underline"></div>
+          
+          <!-- About SALAHE Main Description -->
+          <div class="about-main-description">
+            <p data-translate="aboutDescription">SALAHE is your intelligent farming companion, designed to empower farmers with instant access to agricultural knowledge, personalized advice, and emotional support. Available in both English and Kannada, we bridge the gap between traditional farming wisdom and modern AI technology.</p>
+          </div>
+          
+          <!-- Purpose, Vision, Motive -->
+          <div class="about-features">
+            <div class="about-feature">
+              <div class="icon-circle">
+                <i class="fas fa-bullseye"></i>
+              </div>
+              <h3 data-translate="purposeTitle">Our Purpose</h3>
+              <p data-translate="purposeDescription">To provide farmers with accessible, reliable, and timely agricultural information that helps improve crop yields, reduce losses, and make informed farming decisions.</p>
+            </div>
+             
+            <div class="about-feature">
+              <div class="icon-circle">
+                <i class="fas fa-user-friends"></i>
+              </div>
+              <h3 data-translate="visionTitle">Our Vision</h3>
+              <p data-translate="visionDescription">To become the most trusted AI companion for farmers across India, empowering them with knowledge, technology, and support to build sustainable and prosperous agricultural communities.</p>
+            </div>
+             
+            <div class="about-feature">
+              <div class="icon-circle">
+                <i class="fas fa-heart"></i>
+              </div>
+              <h3 data-translate="motiveTitle">Our Motive</h3>
+              <p data-translate="motiveDescription">To support farmers not just with agricultural advice, but also with emotional well-being and mental health support, recognizing the challenges and pressures of farming life.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+       
+      <!-- FAQ Section -->
+      <div class="faq-section">
+        <div class="faq-container">
+          <div class="icon-circle faq-icon">
+            <i class="fas fa-question"></i>
+          </div>
+          <h2 class="section-title" data-translate="faqTitle">Frequently Asked Questions</h2>
+          <div class="section-underline"></div>
+          
+          <div class="accordion">
+            <div class="accordion-item">
+              <button class="accordion-trigger">
+                <span data-translate="faq1">What is SALAHE and how does it work?</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="accordion-content">
+                <p data-translate="faq1Answer">SALAHE is an AI-powered farming companion that provides advice, answers questions, and offers support to farmers in both English and Kannada languages.</p>
+              </div>
+            </div>
+           
+            <div class="accordion-item">
+              <button class="accordion-trigger">
+                <span data-translate="faq2">Which languages does SALAHE support?</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+              <div class="accordion-content">
+                <p data-translate="faq2Answer">SALAHE currently supports English and Kannada languages to serve farmers across Karnataka.</p>
+              </div>
+            </div>
+            
+
+      
+
+</body>
+</html>

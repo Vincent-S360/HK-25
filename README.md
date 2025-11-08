@@ -37,3 +37,29 @@ That question became **Salahe** — *Advice, Always.*
 - Auto-detects user language and responds accordingly.
 - Kannada + Indian-accent English for inclusivity and regional ease.
 
+### ☁️ Online + Offline Mode
+- **Online Mode:** Powered by **Gemini API** (primary) and **OpenAI GPT-4o** (fallback).  
+- **Offline Mode:** Runs on **Ollama (Aya)** model, enabling English text chat without internet.
+- Ensures uninterrupted assistance even in rural areas with poor connectivity.
+
+### 🧾 Smart Market Advisor
+- Fetches real-time crop prices from official sources like  
+  [Raita Mitra](https://raitamitra.karnataka.gov.in) and [KSAMC](https://ksamc.karnataka.gov.in).  
+- Suggests where farmers can sell their produce for the **best profit**.
+- Example:  
+  > “The highest price for Groundnut is ₹7200 per quintal at Raichur market. You can sell there to earn more!”
+
+### 🌿 Exotic Crop Hub
+- Educates farmers about **exotic and high-value crops**, their cultivation methods, and profitability.
+- Empowers rural communities to explore global agricultural opportunities.
+
+### 🔐 Firebase Integration
+- Handles **user authentication**, **chat storage**, and **data persistence** securely.
+- Farmers’ history and preferences are stored safely for continuous personalization.
+
+### ❤️ Emotional Support
+- Sada is built with **empathetic response modeling**, offering encouragement and motivation.
+- Detects distress cues and gently guides farmers toward mental health resources.
+
+---
+

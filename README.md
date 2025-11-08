@@ -26,3 +26,14 @@ That question became **Salahe** — *Advice, Always.*
 
 ---
 
+
+## ⚙️ Features
+
+### 🎙️ Voice-Enabled Chat
+- Farmers can talk directly to **Sada** in **Kannada or English**.
+- Sada replies both as **text and speech** — creating a natural, human-like interaction.
+
+### 💬 Bilingual Intelligence
+- Auto-detects user language and responds accordingly.
+- Kannada + Indian-accent English for inclusivity and regional ease.
+

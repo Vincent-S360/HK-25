@@ -68,6 +68,28 @@ const API_BASE = (function() {
   return 'http://localhost:3000';
 })();
 
+// Auto-redirect to backend server when opened directly (file:// or VS Code preview)
+(function() {
+  // Check if we're not already on localhost:3000 and not on a local dev server
+  if (!window.location.origin.includes('localhost:3000') && 
+      !window.location.origin.includes('127.0.0.1:3000') &&
+      (window.location.protocol === 'file:' || 
+       window.location.origin.includes('vscode-webview') ||
+       window.location.origin.includes('localhost:5500') ||
+       window.location.origin.includes('127.0.0.1:5500'))) {
+    
+    // Show a brief message before redirecting
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial,sans-serif;background:#f0f0f0;"><div style="text-align:center;"><h2>Redirecting to SALAHE...</h2><p>Opening on port 3000 where your backend is running</p></div></div>';
+    
+    // Redirect to backend server after a brief delay
+    setTimeout(() => {
+      window.location.href = 'http://localhost:3000/';
+    }, 1000);
+    return;
+  }
+})();
+
+
 
 
 

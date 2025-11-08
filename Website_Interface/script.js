@@ -251,6 +251,128 @@ function speakText(text, lang) {
   speechSynthesis.speak(utterance);
 }
 
+// Initialize speech recognition
+function initSpeechRecognition() {
+  // Check if browser supports SpeechRecognition
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  
+  if (!SpeechRecognition) {
+    console.error('Speech recognition not supported in this browser');
+    return false;
+  }
+  
+  // Create recognition instance
+  recognition = new SpeechRecognition();
+  
+  // Configure recognition
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  
+  // Set language based on current selection
+  recognition.lang = currentPageLanguage === 'kn' ? 'kn-IN' : 'en-IN';
+  
+  // Set event handlers
+  recognition.onstart = () => {
+    isListening = true;
+    micButton.classList.add('listening');
+    showToast('Listening...', 'info');
+  };
+  
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    messageInput.value = transcript;
+    
+    // Auto-send after a short delay
+    setTimeout(() => {
+      if (messageInput.value.trim() === transcript.trim()) {
+        sendMessage();
+      }
+    }, 1000);
+  };
+  
+  recognition.onend = () => {
+    isListening = false;
+    micButton.classList.remove('listening');
+  };
+  
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event.error);
+    isListening = false;
+    micButton.classList.remove('listening');
+    showToast('Could not recognize speech. Please try again.', 'error');
+  };
+  
+  return true;
+}
+
+// Simple i18n translations for homepage content
+const translations = {
+  kn: {
+    // Learn More / About
+    learnMoreScroll: "ಸಲಹೆ ಬಗ್ಗೆ ಇನ್ನಷ್ಟು ತಿಳಿದುಕೊಳ್ಳಿ",
+    aboutTitle: "ಸಲಹೆ ಕುರಿತು",
+    aboutDescription:
+      "ಸಲಹೆ ನಿಮ್ಮ ಬುದ್ಧಿವಂತ ಕೃಷಿ ಸಂಗಾತಿ. ನಿಮ್ಮ ಪ್ರಶ್ನೆಗಳಿಗೆ ಕ್ಷಿಪ್ರ ಉತ್ತರಗಳು, ವೈಯಕ್ತಿಕ ಸಲಹೆಗಳು ಮತ್ತು ಭಾವನಾತ್ಮಕ ಬೆಂಬಲವನ್ನು ಕನ್ನಡ ಮತ್ತು ಇಂಗ್ಲಿಷ್‌ನಲ್ಲಿ ನೀಡುತ್ತದೆ.",
+    purposeTitle: "ನಮ್ಮ ಉದ್ದೇಶ",
+    purposeDescription:
+      "ಬೆಳೆ ಉತ್ಪಾದನೆ ಹೆಚ್ಚಿಸಲು, ನಷ್ಟಗಳನ್ನು ಕಡಿಮೆ ಮಾಡಲು, ಮತ್ತು ತಿಳಿದ ಕೃಷಿ ನಿರ್ಧಾರಗಳನ್ನು ಕೈಗೊಳ್ಳಲು ರೈತರಿಗೆ ಸುಲಭ, ನಂಬಿಕಸ್ಥ ಮತ್ತು ಸಮಯೋಚಿತ ಮಾಹಿತಿಯನ್ನು ಒದಗಿಸುವುದು.",
+    visionTitle: "ನಮ್ಮ ದೃಷ್ಟಿ",
+    visionDescription:
+      "ಭಾರತದಾದ್ಯಂತ ರೈತರಿಗೆ ಅತ್ಯಂತ ನಂಬಿಕಸ್ಥ AI ಸಂಗಾತಿಯಾಗಿ, ಜ್ಞಾನ, ತಂತ್ರಜ್ಞಾನ ಮತ್ತು ಬೆಂಬಲದಿಂದ ಶಾಶ್ವತ ಹಾಗೂ ಸಮೃದ್ಧ ಕೃಷಿ ಸಮುದಾಯಗಳನ್ನು ನಿರ್ಮಿಸುವುದು.",
+    motiveTitle: "ನಮ್ಮ ಪ್ರೇರಣೆ",
+    motiveDescription:
+      "ಕೃಷಿ ಸಲಹೆಯ ಜೊತೆಗೆ ಭಾವನಾತ್ಮಕ ಸುಸ್ಥಿತಿ ಮತ್ತು ಮಾನಸಿಕ ಆರೋಗ್ಯ ಬೆಂಬಲವನ್ನು ನೀಡುವುದು, ರೈತರ ಜೀವನದ ಸವಾಲುಗಳನ್ನು ಗುರುತಿಸಿ ಸಹಾಯ ಮಾಡುವುದು.",
+    // FAQ
+    faqTitle: "ಪದೇಪದೇ ಕೇಳಲಾಗುವ ಪ್ರಶ್ನೆಗಳು",
+    faq1: "ಸಲಹೆ ಎಂದರೇನು? ಅದು ಹೇಗೆ ಕೆಲಸ ಮಾಡುತ್ತದೆ?",
+    faq1Answer:
+      "ಸಲಹೆ AI ಆಧಾರಿತ ಕೃಷಿ ಸಂಗಾತಿಯಾಗಿದ್ದು, ನಿಮ್ಮ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರ ನೀಡಿ, ಸಲಹೆ ನೀಡಿ, ಮತ್ತು ಕನ್ನಡ ಹಾಗೂ ಇಂಗ್ಲಿಷ್‌ನಲ್ಲಿ ಬೆಂಬಲ ನೀಡುತ್ತದೆ.",
+    faq2: "ಸಲಹೆ ಯಾವ ಭಾಷೆಗಳನ್ನು ಬೆಂಬಲಿಸುತ್ತದೆ?",
+    faq2Answer: "ಸಲಹೆ ಈಗ ಇಂಗ್ಲಿಷ್ ಮತ್ತು ಕನ್ನಡ ಭಾಷೆಗಳನ್ನು ಬೆಂಬಲಿಸುತ್ತದೆ.",
+    faq3: "ಟೈಪ್ ಮಾಡುವುದರ ಬದಲು ಧ್ವನಿ ಬಳಸಬಹುದೇ?",
+    faq3Answer:
+      "ಹೌದು! ನೀವು ಕನ್ನಡ ಅಥವಾ ಇಂಗ್ಲಿಷ್‌ನಲ್ಲಿ ಮಾತನಾಡಬಹುದು. ಮೈಕ್ರೋಫೋನ್ ಬಟನ್ ಕ್ಲಿಕ್ ಮಾಡಿ, ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಹೇಳಿ, ಸಲಹೆ ಪ್ರತಿಕ್ರಿಯಿಸುತ್ತದೆ.",
+    faq4: "ನಾನು ಯಾವ ವಿಷಯಗಳ ಬಗ್ಗೆ ಕೇಳಬಹುದು?",
+    faq4Answer:
+      "ಬೆಳೆ ಆಯ್ಕೆ, ಕೀಟ ನಿಯಂತ್ರಣ, ಹವಾಮಾನ ಹೊಂದಿಕೆ, ಶಾಶ್ವತ ಕೃಷಿ ಪದ್ಧತಿಗಳು, ಮತ್ತು ಭಾವನಾತ್ಮಕ ಬೆಂಬಲ ಕುರಿತು ಕೇಳಬಹುದು.",
+    faq5: "ಸಲಹೆ ಉಚಿತವೇ?",
+    faq5Answer: "ಹೌದು, ಸಲಹೆ ಎಲ್ಲ ರೈತರಿಗೆ ಉಚಿತವಾಗಿದೆ.",
+    faq6: "ಮಾಹಿತಿಯ ನಿಖರತೆ ಹೇಗಿದೆ?",
+    faq6Answer:
+      "ಸಲಹೆ ಕೃಷಿ ಉತ್ತಮ ಕ್ರಮಗಳು ಮತ್ತು ಸಂಶೋಧನೆ ಆಧಾರಿತ ಮಾಹಿತಿಯನ್ನು ನೀಡುತ್ತದೆ. ನಾವು ನಮ್ಮ ಜ್ಞಾನವನ್ನು ನಿರಂತರವಾಗಿ ನವೀಕರಿಸುತ್ತೇವೆ.",
+    // CTA
+    ctaTitle: "ಪ್ರಾರಂಭಿಸಲು ಸಿದ್ಧವೇ?",
+    ctaSubtitle:
+      "ಸಲಹೆಯ ವೈಯಕ್ತಿಕ ಕೃಷಿ ಸಲಹೆಯಿಂದ ಪ್ರಯೋಜನ ಪಡೆಯುತ್ತಿರುವ ಸಾವಿರಾರು ರೈತರ ಜೊತೆ ಸೇರಿ",
+    ctaButton: "ಈಗಲೇ ಸಲಹೆ ಬಳಸಿರಿ",
+    // Chat UI
+    back: "ಹಿಂತಿರುಗಿ",
+    menu: "ಮೆನು",
+    newChat: "ಹೊಸ ಚಾಟ್",
+    chatHistory: "ಚಾಟ್ ಇತಿಹಾಸ",
+    options: "ಆಯ್ಕೆಗಳು",
+    clearHistory: "ಇತಿಹಾಸ ಅಳಿಸಿ",
+    settings: "ಸೆಟ್ಟಿಂಗ್ಸ್",
+    deleteAccount: "ಖಾತೆ ಅಳಿಸಿ",
+    chatGreeting:
+      "ನಮಸ್ಕಾರ! ನಾನು ಸದಾ, ನಿಮ್ಮ ಕೃಷಿ ಸಂಗಾತಿ. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?",
+    // Quick action labels
+    qaCrop: "ಬೆಳೆ ಶಿಫಾರಸು",
+    qaSchemes: "ಸರ್ಕಾರಿ ಯೋಜನೆಗಳು",
+    qaAgri: "ಕೃಷಿ ಸಲಹೆಗಳು",
+    qaWeather: "ಹವಾಮಾನ ಆಧಾರಿತ ಬೆಳೆ ಸಲಹೆಗಳು",
+    qaEmotional: "ಭಾವನಾತ್ಮಕ ಬೆಂಬಲ",
+    qaProfit: "ಸ್ಮಾರ್ಟ್ ಲಾಭ ಲೆಕ್ಕಾಚಾರಕ",
+    qaExport: "ರಫ್ತು ಮಾರುಕಟ್ಟೆಗಳು ಮತ್ತು ಖರೀದಿದಾರರು",
+    qaExhort: "ರಫ್ತು ಆಗುವ ತರಕಾರಿ/ಬೆಳೆಗಳನ್ನು ಇಲ್ಲಿ ಬೆಳೆಸೋಣ",
+    qaMarket: "ಮಾರುಕಟ್ಟೆ ಸಲಹೆ"
+  },
+  en: {
+    qaMarket: 'Market Advice',
+    // English falls back to initial DOM text; no overrides needed
+  }
+};
+
 
 
 

@@ -373,6 +373,78 @@ const translations = {
   }
 };
 
+// Cache initial text for elements with data-translate so we can restore English
+const i18nInitialText = {};
+function cacheInitialTranslations() {
+  document.querySelectorAll('[data-translate]').forEach((el) => {
+    const key = el.getAttribute('data-translate');
+    if (key && !(key in i18nInitialText)) {
+      i18nInitialText[key] = el.textContent;
+    }
+  });
+}
+
+function applyPageLanguage(lang) {
+  const elements = document.querySelectorAll('[data-translate]');
+  if (lang === 'en') {
+    elements.forEach((el) => {
+      const key = el.getAttribute('data-translate');
+      if (key && i18nInitialText[key] != null) {
+        el.textContent = i18nInitialText[key];
+      }
+    });
+    return;
+  }
+  const dict = translations[lang] || {};
+  elements.forEach((el) => {
+    const key = el.getAttribute('data-translate');
+    if (key && dict[key]) {
+      el.textContent = dict[key];
+    }
+  });
+}
+
+// Auth Modal Elements
+const authModal = document.getElementById('auth-modal');
+const closeModal = document.querySelector('.close-modal');
+const authTabs = document.querySelectorAll('.auth-tab');
+const loginForm = document.getElementById('login-form');
+const signupForm = document.getElementById('signup-form');
+const loginButton = document.getElementById('login-button');
+const signupButton = document.getElementById('signup-button');
+// Header auth controls
+const headerLogin = document.getElementById('header-login');
+const headerSignup = document.getElementById('header-signup');
+const headerLogout = document.getElementById('header-logout');
+const headerUser = document.getElementById('header-user');
+// Chat header logout
+const chatLogoutButton = document.getElementById('chat-logout-button');
+
+// Auth state observer
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    currentUser = user;
+    ensureUserDoc();
+    handleLoginDefaults();
+    loadChatHistory();
+    hideAuthModal();
+    showToast(`Welcome ${user.displayName || user.email}!`, 'success');
+    if (pendingChatOpen) {
+      openChatInterface();
+      pendingChatOpen = false;
+    }
+    updateAuthHeaderUI();
+    loadChatHistoryList(); // Load chat history for sidebar
+    previousUserEmail = user.email;
+  } else {
+    currentUser = null;
+    currentChatId = null;
+    updateAuthHeaderUI();
+    loadChatHistoryList(); // Update sidebar with login message
+  }
+});
+
+
 
 
 

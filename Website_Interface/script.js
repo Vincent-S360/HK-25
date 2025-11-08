@@ -1995,17 +1995,360 @@ async function getAIResponse(userMessage) {
   }
 }
 
+// Ollama API Integration for Offline Support
+async function getOllamaResponse(userMessage) {
+  try {
+    console.log('Calling Ollama API with Aya model...');
+    
+    // Show toast notification for offline mode
+    showToast('💬 Offline mode: Sada is replying locally.', 'info');
+    
+    // Create a simple prompt that maintains Sada's personality
+    const systemPrompt = `You are Sada, an empathetic AI assistant for farmers. You provide helpful agricultural advice in both English and Kannada. Keep responses concise but caring. Current language preference: ${currentPageLanguage || 'en'}`;
+    
+    const fullPrompt = `${systemPrompt}\n\nUser: ${userMessage}\nSada:`;
+    
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'aya',
+        prompt: fullPrompt,
+        stream: false,
+        options: {
+          temperature: 0.7,
+          max_tokens: 500
+        }
+      })
+    });
 
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status}`);
+    }
 
+    const data = await response.json();
+    
+    if (data && data.response) {
+      console.log('Aya response received successfully');
+      return data.response.trim();
+    } else {
+      throw new Error('Invalid response from Ollama');
+    }
+  } catch (error) {
+    console.error('Ollama API call failed:', error);
+    
+    // Return a basic offline fallback message
+    const offlineFallback = currentPageLanguage === 'kn' 
+      ? 'ಕ್ಷಮಿಸಿ, ನಾನು ಈಗ ಆಫ್‌ಲೈನ್ ಮೋಡ್‌ನಲ್ಲಿದ್ದೇನೆ ಮತ್ತು ಸೀಮಿತ ಸೇವೆಗಳನ್ನು ಮಾತ್ರ ಒದಗಿಸಬಲ್ಲೆ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಇಂಟರ್ನೆಟ್ ಸಂಪರ್ಕವನ್ನು ಪರಿಶೀಲಿಸಿ.'
+      : 'Sorry, I am currently in offline mode and can only provide limited assistance. Please check your internet connection.';
+    
+    return offlineFallback;
+  }
+}
 
+// Build conversation history from current chat
+async function buildConversationHistory(currentMessage) {
+  const messages = [];
+  
+  // Get recent messages from current chat if available
+  if (currentChatId && currentUser) {
+    try {
+      const msgsSnap = await db.collection('users').doc(currentUser.email)
+        .collection('chats').doc(currentChatId)
+        .collection('messages')
+        .orderBy('timestamp', 'desc')
+        .limit(10) // Last 10 messages for context
+        .get();
+      
+      const recentMessages = [];
+      msgsSnap.forEach(doc => {
+        const msgData = doc.data();
+        recentMessages.unshift({ // Reverse order to get chronological
+          role: msgData.role,
+          content: msgData.text
+        });
+      });
+      
+      messages.push(...recentMessages);
+    } catch (error) {
+      console.error('Error fetching conversation history:', error);
+    }
+  }
+  
+  // Add current message
+  messages.push({
+    role: 'user',
+    content: currentMessage
+  });
+  
+  return messages;
+}
 
+// Typing indicator functions
+function showTypingIndicator() {
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'message assistant-message typing-indicator';
+  typingDiv.id = 'typing-indicator';
+  typingDiv.innerHTML = `
+    <div class="message-content">
+      <div class="typing-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <span class="typing-text">${currentPageLanguage === 'kn' ? 'ಸಾದ ಯೋಚಿಸುತ್ತಿದೆ...' : 'Sada is thinking...'}</span>
+    </div>
+  `;
+  messagesContainer.appendChild(typingDiv);
+  scrollToBottom();
+}
 
+function hideTypingIndicator() {
+  const typingIndicator = document.getElementById('typing-indicator');
+  if (typingIndicator) {
+    typingIndicator.remove();
+  }
+}
 
+// Fallback response when API fails
+function getFallbackResponse() {
+  const fallbackResponses = {
+    en: "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a few moments, or feel free to ask me about farming techniques, crop advice, or government schemes.",
+    kn: "ಕ್ಷಮಿಸಿ, ನನ್ನ ಜ್ಞಾನ ಮೂಲಕ್ಕೆ ಸಂಪರ್ಕ ಸಾಧಿಸಲು ನನಗೆ ತೊಂದರೆಯಾಗುತ್ತಿದೆ. ದಯವಿಟ್ಟು ಕೆಲವು ಕ್ಷಣಗಳಲ್ಲಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ, ಅಥವಾ ಕೃಷಿ ತಂತ್ರಗಳು, ಬೆಳೆ ಸಲಹೆ, ಅಥವಾ ಸರ್ಕಾರಿ ಯೋಜನೆಗಳ ಬಗ್ಗೆ ನನ್ನನ್ನು ಕೇಳಿ."
+  };
+  
+  return fallbackResponses[currentPageLanguage] || fallbackResponses.en;
+}
 
+// Listen for Firebase AI Logic test result events and show toast
+window.addEventListener('firebase-ai-test-result', (ev) => {
+  const { ok, text, error } = ev.detail || {};
+  if (ok) {
+    showToast(`AI test success: ${text}`, 'success');
+  } else {
+    showToast(`AI test error: ${error || 'Unknown error'}`, 'error');
+  }
+});
 
+// Attempt instant still capture via MediaDevices API
+async function captureStillViaCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
+  let stream = null;
+  try {
+    try { showToast('Opening camera…', 'info', 1500); } catch (e) {}
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    // Create temporary elements (not added to layout)
+    const video = document.createElement('video');
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = stream;
+    await video.play();
+    // Wait for dimensions
+    await new Promise((res) => {
+      if (video.readyState >= 2) return res();
+      video.onloadedmetadata = () => res();
+    });
+    // Brief countdown without UI changes
+    try { showToast('Capturing in 1 second…', 'info', 1000); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 900));
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    try { if (blob) showToast('Photo captured', 'success'); } catch (e) {}
+    return blob;
+  } catch (e) {
+    return null;
+  } finally {
+    try {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    } catch (e) {}
+  }
+}
 
+// Handle image upload - show image and automatically generate complete description
+async function handleImageUpload(file, isCamera) {
+  if (!file) return;
+  recordInteraction();
+  
+  try {
+    // Show the photo in chat immediately
+    const url = URL.createObjectURL(file);
+    addUserImageMessage(url);
+    
+    // Persist lightweight note instead of raw image
+    const source = isCamera ? 'captured' : 'uploaded';
+    persistChatAndMessage('user', `[Photo ${source}] ${file.name || 'image'}`);
+    
+    // Show typing indicator
+    showTypingIndicator();
+    
+    // Automatically analyze and generate complete description
+    const description = await analyzeImageWithGeminiComplete(file);
+    
+    hideTypingIndicator();
+    
+    // Add the complete description as assistant message
+    addAssistantMessage(description);
+    persistChatAndMessage('assistant', description);
+    
+    // Clear the stored file since we've already analyzed it
+    lastCapturedImageFile = null;
+    imageQuestionPending = false;
+  } catch (err) {
+    console.error('Image upload/analysis failed:', err);
+    hideTypingIndicator();
+    showToast('Could not analyze the image. Please try again.', 'error');
+  }
+}
 
+// Analyze an image using Gemini via Firebase AI Logic (client-side)
+async function analyzeImageWithGemini(file) {
+  return analyzeImageWithGeminiWithQuestion(file, null);
+}
 
+// Analyze image with optional user question for better guidance
+async function analyzeImageWithGeminiWithQuestion(file, userQuestion) {
+  try {
+    if (!window.firebaseAI || !window.firebaseAI.getModel) {
+      throw new Error('AI module not loaded');
+    }
+    // Read file as base64 (without data URL prefix)
+    const toBase64 = (f) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const result = String(reader.result || '');
+          const base64 = result.split(',')[1] || result; // strip data: prefix
+          resolve(base64);
+        } catch (e) { reject(e); }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(f);
+    });
+    const base64 = await toBase64(file);
+
+    const model = window.firebaseAI.getModel({ model: 'gemini-2.5-flash' });
+    const lang = currentPageLanguage || 'en';
+    const basePrompt = lang === 'kn'
+      ? 'ಈ ಕೃಷಿ ಸಂಬಂಧಿತ ಫೋಟೋವನ್ನು ವಿಶ್ಲೇಷಿಸಿ. ಸಮಸ್ಯೆ/ಬೆಳೆ/ಸ್ಥಿತಿ ಏನು ಎಂದು ಹೇಳಿ ಮತ್ತು ಸರಳ, ಪ್ರಾಯೋಗಿಕ ಸಲಹೆ ನೀಡಿ.'
+      : 'Analyze this farming-related photo. Identify the crop/issue/condition and give simple, practical suggestions.';
+    const prompt = userQuestion
+      ? `${basePrompt}\nQuestion: ${userQuestion}`
+      : basePrompt;
+    const res = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: `${prompt}\nLanguage: ${lang}` },
+          { inlineData: { data: base64, mimeType: file.type || 'image/jpeg' } }
+        ]
+      }]
+    });
+    const text = res && res.response && typeof res.response.text === 'function'
+      ? res.response.text()
+      : (res && res.response && res.response.candidates && res.response.candidates[0] && res.response.candidates[0].content && res.response.candidates[0].content.parts && res.response.candidates[0].content.parts.map(p => p.text || '').join('\n'));
+    return (text && String(text).trim()) || getFallbackResponse();
+  } catch (e) {
+    console.error('analyzeImageWithGemini error:', e);
+    return getFallbackResponse();
+  }
+}
+
+// Analyze image and generate complete description automatically
+async function analyzeImageWithGeminiComplete(file) {
+  try {
+    if (!window.firebaseAI || !window.firebaseAI.getModel) {
+      throw new Error('AI module not loaded');
+    }
+    // Read file as base64 (without data URL prefix)
+    const toBase64 = (f) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const result = String(reader.result || '');
+          const base64 = result.split(',')[1] || result; // strip data: prefix
+          resolve(base64);
+        } catch (e) { reject(e); }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(f);
+    });
+    const base64 = await toBase64(file);
+
+    const model = window.firebaseAI.getModel({ model: 'gemini-2.5-flash' });
+    const lang = currentPageLanguage || 'en';
+    
+    // Enhanced prompt for detailed ChatGPT-style description
+    const completePrompt = lang === 'kn'
+      ? `ಈ ಕೃಷಿ ಫೋಟೋವನ್ನು ವಿವರವಾಗಿ ಮತ್ತು ಸಂಪೂರ್ಣವಾಗಿ ವಿಶ್ಲೇಷಿಸಿ. ನೀವು ನೋಡುವ ಎಲ್ಲವನ್ನೂ ವಿವರವಾಗಿ ವಿವರಿಸಿ:
+
+1. **ವಿವರವಾದ ದೃಶ್ಯ ವಿವರಣೆ**: ಫೋಟೋದಲ್ಲಿ ನೀವು ನೋಡುವ ಎಲ್ಲವನ್ನೂ ವಿವರವಾಗಿ ವಿವರಿಸಿ - ಬಣ್ಣಗಳು, ಆಕಾರಗಳು, ಗಾತ್ರಗಳು, ವಿನ್ಯಾಸಗಳು, ಮತ್ತು ಯಾವುದೇ ಗಮನಾರ್ಹ ವೈಶಿಷ್ಟ್ಯಗಳು.
+
+2. **ಬೆಳೆ/ಸಸ್ಯ ಗುರುತಿಸುವಿಕೆ**: ನಿಖರವಾದ ಬೆಳೆ ಅಥವಾ ಸಸ್ಯದ ಹೆಸರು, ವಿವಿಧತೆ (ಅದು ತಿಳಿದಿದ್ದರೆ), ಮತ್ತು ಅದರ ವಿಶಿಷ್ಟ ಗುಣಲಕ್ಷಣಗಳು.
+
+3. **ಬೆಳವಣಿಗೆ ಹಂತ**: ಬೆಳೆ ಯಾವ ಬೆಳವಣಿಗೆ ಹಂತದಲ್ಲಿದೆ (ಬೀಜ, ಮೊಳಕೆ, ಸಸಿ, ವನಸ್ಪತಿ, ಹೂವು, ಫಲ, ಕೊಯ್ಲು) ಮತ್ತು ಅದು ಎಷ್ಟು ಮುಂದುವರಿದಿದೆ ಎಂಬುದರ ವಿವರಣೆ.
+
+4. **ಆರೋಗ್ಯ ಮೌಲ್ಯಮಾಪನ**: ಸಸ್ಯಗಳ ಆರೋಗ್ಯ ಸ್ಥಿತಿಯನ್ನು ವಿವರವಾಗಿ ವಿಶ್ಲೇಷಿಸಿ - ಎಲೆಗಳ ಬಣ್ಣ ಮತ್ತು ರಚನೆ, ಕಾಂಡದ ಸ್ಥಿತಿ, ಯಾವುದೇ ರೋಗ, ಕೀಟ, ಅಥವಾ ಪೋಷಕಾಂಶದ ಕೊರತೆಯ ಚಿಹ್ನೆಗಳು.
+
+5. **ಪರಿಸರದ ಪರಿಸ್ಥಿತಿಗಳು**: ಮಣ್ಣಿನ ಸ್ಥಿತಿ, ನೀರಿನ ಲಭ್ಯತೆ, ಬೆಳಕಿನ ಪರಿಸ್ಥಿತಿಗಳು, ಮತ್ತು ಯಾವುದೇ ಗಮನಾರ್ಹ ಪರಿಸರದ ಅಂಶಗಳು.
+
+6. **ಸಮಸ್ಯೆಗಳು ಮತ್ತು ಕಾಳಜಿಗಳು**: ಯಾವುದೇ ಸಮಸ್ಯೆಗಳು, ರೋಗಗಳು, ಕೀಟಗಳು, ಅಥವಾ ಕಾಳಜಿಗಳನ್ನು ಗುರುತಿಸಿ ಮತ್ತು ವಿವರಿಸಿ.
+
+7. **ವಿವರವಾದ ಶಿಫಾರಸುಗಳು**: ಪ್ರಾಯೋಗಿಕ ಮತ್ತು ವಿವರವಾದ ಸಲಹೆಗಳು - ಯಾವ ಕ್ರಮಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಬೇಕು, ಯಾವ ಚಿಕಿತ್ಸೆಗಳು ಅಗತ್ಯವಿದೆ, ಮತ್ತು ಉತ್ತಮ ಕೃಷಿ ಪದ್ಧತಿಗಳು.
+
+8. **ಭವಿಷ್ಯದ ನಿರೀಕ್ಷೆಗಳು**: ಈ ಬೆಳೆಯ ಭವಿಷ್ಯದ ಬೆಳವಣಿಗೆ ಮತ್ತು ಸಂಭಾವ್ಯ ಫಲಿತಾಂಶಗಳ ಬಗ್ಗೆ ಊಹೆಗಳು.
+
+ನಿಮ್ಮ ಪ್ರತಿಕ್ರಿಯೆಯು ಸಂಪೂರ್ಣ, ವಿವರವಾದ, ಮತ್ತು ರೈತರಿಗೆ ಅತ್ಯಂತ ಸಹಾಯಕವಾಗಿರಬೇಕು. ಪ್ರತಿಯೊಂದು ವಿಭಾಗವನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ಮತ್ತು ವಿವರವಾಗಿ ವಿವರಿಸಿ.`
+      : `Analyze this farming-related photo in extreme detail and provide a comprehensive, ChatGPT-style description. Describe everything you observe in great detail:
+
+1. **Detailed Visual Description**: Provide a thorough description of everything visible in the photo - colors, shapes, sizes, textures, patterns, and any notable features. Describe the overall scene, foreground, background, and any specific elements that stand out.
+
+2. **Crop/Plant Identification**: Identify the exact crop or plant species, variety (if identifiable), and describe its distinctive characteristics. Include information about the plant's typical growth habits and requirements.
+
+3. **Growth Stage Analysis**: Determine and describe the growth stage of the crop (seedling, vegetative, flowering, fruiting, maturity, harvest-ready) and how advanced it appears to be. Provide specific details about what indicates this stage.
+
+4. **Health Assessment**: Conduct a detailed health evaluation - analyze leaf color, texture, and structure; stem condition; root visibility (if any); and identify any signs of diseases, pests, nutrient deficiencies, or other health issues. Describe the overall vigor and vitality of the plants.
+
+5. **Environmental Conditions**: Assess and describe soil conditions (color, texture, moisture), water availability, light conditions, weather indicators, and any other environmental factors visible in the image.
+
+6. **Issues and Concerns**: Identify and describe any problems, diseases, pests, stress indicators, or concerns visible in the photo. Be specific about what you observe and what might be causing any issues.
+
+7. **Detailed Recommendations**: Provide practical, detailed advice including:
+   - Immediate actions that should be taken
+   - Treatment options for any identified issues
+   - Best practices for this crop at this stage
+   - Preventive measures
+   - Long-term care suggestions
+
+8. **Future Outlook**: Provide insights about the expected future development of this crop and potential outcomes based on current conditions.
+
+Your response should be comprehensive, detailed, and extremely helpful to farmers. Structure your response clearly with well-organized sections, and be thorough in your analysis. Write as if you're providing expert agricultural consultation.`;
+    
+    const res = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: `${completePrompt}\nLanguage: ${lang}` },
+          { inlineData: { data: base64, mimeType: file.type || 'image/jpeg' } }
+        ]
+      }]
+    });
+    const text = res && res.response && typeof res.response.text === 'function'
+      ? res.response.text()
+      : (res && res.response && res.response.candidates && res.response.candidates[0] && res.response.candidates[0].content && res.response.candidates[0].content.parts && res.response.candidates[0].content.parts.map(p => p.text || '').join('\n'));
+    return (text && String(text).trim()) || getFallbackResponse();
+  } catch (e) {
+    console.error('analyzeImageWithGeminiComplete error:', e);
+    return getFallbackResponse();
+  }
+}
 
 
 

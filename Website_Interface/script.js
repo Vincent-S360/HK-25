@@ -1235,6 +1235,768 @@ function loadChatHistoryList() {
     });
 }
 
+// Initialize Speech Recognition
+function initSpeechRecognition() {
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = currentLanguage;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      hideQuickActions();
+      messageInput.value = transcript;
+      isListening = false;
+      updateMicButtonUI();
+      showToast('Voice captured!', 'success');
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      isListening = false;
+      updateMicButtonUI();
+      showToast('Voice input failed. Please try again.', 'error');
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      updateMicButtonUI();
+    };
+  } else {
+    micButton.style.display = 'none';
+    showToast('Speech recognition not supported. Please use Chrome or Edge.', 'error');
+  }
+}
+
+// Toggle speech recognition
+function toggleSpeechRecognition() {
+  if (!recognition) {
+    initSpeechRecognition();
+  }
+  
+  if (isListening) {
+    recognition.stop();
+    isListening = false;
+  } else {
+    hideQuickActions();
+    recognition.lang = currentLanguage;
+    recognition.start();
+    isListening = true;
+    showToast('Listening...', 'info');
+  }
+  
+  updateMicButtonUI();
+}
+
+// Update mic button UI based on listening state
+function updateMicButtonUI() {
+  if (isListening) {
+    micButton.classList.add('active');
+    micButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+  } else {
+    micButton.classList.remove('active');
+    micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+  }
+}
+
+// Send message function
+async function sendMessage() {
+  const message = messageInput.value.trim();
+  
+  if (!message) return;
+  
+  hideQuickActions();
+  // Add user message to UI
+  addUserMessage(message);
+  // Persist the user message to Firestore
+  persistChatAndMessage('user', message);
+  
+  // Clear input
+  messageInput.value = '';
+  
+  // Show typing indicator
+  showTypingIndicator();
+  
+  try {
+    let response;
+    // If we have a pending image question, analyze image + question together
+    if (imageQuestionPending && lastCapturedImageFile) {
+      response = await analyzeImageWithGeminiWithQuestion(lastCapturedImageFile, message);
+      // Clear the pending state after using once
+      imageQuestionPending = false;
+      lastCapturedImageFile = null;
+    } else {
+      // Get AI response from backend
+      response = await getAIResponse(message);
+    }
+    hideTypingIndicator();
+    addAssistantMessage(response);
+    // Persist assistant response
+    persistChatAndMessage('assistant', response);
+  } catch (error) {
+    console.error('Error getting AI response:', error);
+    hideTypingIndicator();
+    const fallbackResponse = getFallbackResponse();
+    addAssistantMessage(fallbackResponse);
+    persistChatAndMessage('assistant', fallbackResponse);
+  }
+}
+
+// Add user message to UI
+function addUserMessage(message) {
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'message user-message';
+  messageDiv.innerHTML = `
+    <div class="message-content">
+      <div class="message-bubble">
+        <p>${message}</p>
+      </div>
+      <span class="timestamp">${timestamp}</span>
+    </div>
+    <div class="avatar user-avatar">
+      <i class="fas fa-user"></i>
+    </div>
+  `;
+  
+  messagesContainer.appendChild(messageDiv);
+  scrollToBottom();
+}
+
+// Event delegation for profit form submit button
+document.addEventListener('click', async (e) => {
+  const btn = e.target && e.target.closest('button[data-role="profit-submit"]');
+  if (!btn) return;
+  const targetId = btn.getAttribute('data-target');
+  const tbody = document.getElementById(targetId);
+  if (!tbody) return;
+  try {
+    const getVal = (name) => {
+      const el = tbody.querySelector(`[name="${name}"]`);
+      return el ? el.value : '';
+    };
+    const payload = {
+      cropName: getVal('cropName'),
+      areaInAcres: parseFloat(getVal('areaInAcres') || '1'),
+      seedCost: parseFloat(getVal('seedCost') || '0'),
+      fertilizerCost: parseFloat(getVal('fertilizerCost') || '0'),
+      irrigationCost: parseFloat(getVal('irrigationCost') || '0'),
+      laborCost: parseFloat(getVal('laborCost') || '0'),
+      yieldPerAcre: getVal('yieldPerAcre') ? parseFloat(getVal('yieldPerAcre')) : undefined,
+      location: getVal('location') || 'Karnataka'
+    };
+    showTypingIndicator();
+    const resp = await fetch(`${API_BASE}/api/profit-calculator`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    hideTypingIndicator();
+    if (!resp.ok || !data || !data.success) {
+      addAssistantMessage(getFallbackResponse());
+      return;
+    }
+    if (data.type === 'single') {
+      const r = data.data || {};
+      const totalCost = (r.costs && r.costs.totalCost) || 0;
+      const totalRevenue = (r.market && r.market.totalRevenue) || 0;
+      const netProfit = (r.profit && r.profit.netProfit) || 0;
+      const roi = (r.profit && r.profit.roi) || 0;
+      const summary = `Result for ${r.cropName || payload.cropName || 'crop'} (${r.areaInAcres || payload.areaInAcres} acres)\n\n` +
+        `Estimated Cost: ₹${totalCost.toLocaleString()}\n` +
+        `Estimated Revenue: ₹${totalRevenue.toLocaleString()}\n` +
+        `Estimated Profit: ₹${netProfit.toLocaleString()}\n` +
+        `ROI: ${Number(roi).toFixed(1)}%`;
+      addAssistantMessage(summary);
+      persistChatAndMessage('assistant', summary);
+    } else if (data.type === 'comparison') {
+      const lines = ['Comparison Results:'];
+      (data.data || []).forEach((row) => {
+        lines.push(`${row.cropName}: Profit ₹${(row.netProfit || 0).toLocaleString()} | ROI ${(row.roiPercent || 0).toFixed(1)}%`);
+      });
+      const txt = lines.join('\n');
+      addAssistantMessage(txt);
+      persistChatAndMessage('assistant', txt);
+    }
+  } catch (err) {
+    console.error('Profit submit error:', err);
+    hideTypingIndicator();
+    addAssistantMessage(getFallbackResponse());
+  }
+});
+
+// Add assistant message to UI
+function addAssistantMessage(message) {
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'message assistant-message';
+  messageDiv.innerHTML = `
+    <div class="avatar assistant-avatar">
+      <i class="fas fa-robot"></i>
+    </div>
+    <div class="message-content">
+      <div class="message-bubble">
+        <p>${message}</p>
+      </div>
+      <span class="timestamp">${timestamp}</span>
+    </div>
+  `;
+  
+  // Add click event to replay speech
+  const messageBubble = messageDiv.querySelector('.message-bubble');
+  messageBubble.style.cursor = 'pointer';
+  messageBubble.addEventListener('click', () => {
+    speakText(message, currentPageLanguage);
+  });
+  
+  messagesContainer.appendChild(messageDiv);
+  scrollToBottom();
+  // Auto-speak assistant reply when voice is enabled and chat is visible
+  try {
+    const chatOpen = !chatInterface.classList.contains('hidden');
+    if (voiceEnabled && chatOpen && typeof speakText === 'function') {
+      speakText(message, currentPageLanguage);
+    }
+  } catch (e) {}
+}
+
+// Render Smart Profit Calculator input as an inline table-form in a chat bubble
+function renderProfitCalculatorForm() {
+  const formId = 'profit-form-' + Date.now();
+  const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isKannada = currentPageLanguage === 'kn';
+  const label = (en, kn) => (isKannada ? kn : en);
+  const html = `
+    <div class="message assistant-message">
+      <div class="avatar assistant-avatar"><i class="fas fa-robot"></i></div>
+      <div class="message-content">
+        <div class="message-bubble">
+          <div style="overflow:auto;max-width:100%;">
+            <table style="border-collapse:collapse;width:100%;min-width:520px;">
+              <tbody id="${formId}">
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Crop Name','ಬೆಳೆ ಹೆಸರು')}</td>
+                  <td style="padding:6px 8px;"><input type="text" name="cropName" placeholder="e.g., rice" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Area (acres)','ಪ್ರದೇಶ (ಎಕರೆ)')}</td>
+                  <td style="padding:6px 8px;"><input type="number" step="0.01" name="areaInAcres" placeholder="1" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Seed Cost','ಬೀಜ ವೆಚ್ಚ')}</td>
+                  <td style="padding:6px 8px;"><input type="number" step="0.01" name="seedCost" placeholder="4000" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Fertilizer Cost','ಗೊಬ್ಬರ ವೆಚ್ಚ')}</td>
+                  <td style="padding:6px 8px;"><input type="number" step="0.01" name="fertilizerCost" placeholder="10000" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Irrigation Cost','ನೀರಾವರಿ ವೆಚ್ಚ')}</td>
+                  <td style="padding:6px 8px;"><input type="number" step="0.01" name="irrigationCost" placeholder="8000" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Labor Cost','ಕಾರ್ಮಿಕ ವೆಚ್ಚ')}</td>
+                  <td style="padding:6px 8px;"><input type="number" step="0.01" name="laborCost" placeholder="12000" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Yield per acre (optional)','ಪ್ರತಿ ಎಕರೆಗೆ ಉತ್ಪಾದನೆ (ಐಚ್ಛಿಕ)')}</td>
+                  <td style="padding:6px 8px;"><input type="number" step="0.01" name="yieldPerAcre" placeholder="50" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 8px;font-weight:600;">${label('Location','ಸ್ಥಳ')}</td>
+                  <td style="padding:6px 8px;"><input type="text" name="location" placeholder="Karnataka" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:8px;"/></td>
+                </tr>
+                <tr>
+                  <td></td>
+                  <td style="padding:8px 8px;">
+                    <button data-role="profit-submit" data-target="${formId}" style="background:#16a34a;color:#fff;border:none;border-radius:9999px;padding:10px 14px;cursor:pointer;">
+                      ${label('Calculate Profit','ಲಾಭ ಲೆಕ್ಕ ಹಾಕಿ')}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <span class="timestamp">${timestamp}</span>
+      </div>
+    </div>`;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  // Append after quick-actions (so it appears right away)
+  messagesContainer.appendChild(wrapper.firstElementChild);
+  scrollToBottom();
+}
+
+// Add a user image bubble to UI
+function addUserImageMessage(objectUrl) {
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'message user-message';
+  messageDiv.innerHTML = `
+    <div class="message-content">
+      <div class="message-bubble">
+        <img src="${objectUrl}" alt="Uploaded photo" style="max-width:220px;border-radius:10px;display:block;" />
+      </div>
+      <span class="timestamp">${timestamp}</span>
+    </div>
+    <div class="avatar user-avatar">
+      <i class="fas fa-user"></i>
+    </div>
+  `;
+  messagesContainer.appendChild(messageDiv);
+  scrollToBottom();
+}
+
+// Scroll to bottom of messages container
+function scrollToBottom() {
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Load chat history from Firestore
+function loadChatHistory() {
+  if (!currentUser) return;
+  
+  try {
+    // Placeholder for chat history loading
+    showToast('Loading chat history...', 'info');
+  } catch (error) {
+    console.error('Error loading chat history:', error);
+  }
+}
+
+// Ensure user document exists (keyed by email as requested)
+function ensureUserDoc() {
+  if (!currentUser) return;
+  const userDocRef = db.collection('users').doc(currentUser.email);
+  userDocRef.set({
+    uid: currentUser.uid,
+    email: currentUser.email,
+    displayName: currentUser.displayName || null,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true }).catch(err => console.error('ensureUserDoc error:', err));
+}
+
+// Create chat doc if needed and persist message to subcollection
+async function persistChatAndMessage(role, text) {
+  if (!currentUser) {
+    showToast('Please login to save chat history');
+    return;
+  }
+  try {
+    // Create chat doc if none exists for current session
+    if (!currentChatId) {
+      // Do not create a chat doc from assistant-only messages (e.g., initial greeting)
+      if (role !== 'user') {
+        return;
+      }
+      const title = (text && text.length > 40) ? text.slice(0, 40) + '…' : (text || 'Chat');
+      const chatDoc = await db.collection('users').doc(currentUser.email)
+        .collection('chats').add({
+          title,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          language: currentPageLanguage || 'en'
+        });
+      currentChatId = chatDoc.id;
+      // Refresh history list UI
+      loadChatHistoryList();
+    }
+    // Add message to messages subcollection
+    await db.collection('users').doc(currentUser.email)
+      .collection('chats').doc(currentChatId)
+      .collection('messages').add({
+        role,
+        text,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+  } catch (error) {
+    console.error('persistChatAndMessage error:', error);
+  }
+}
+
+// Render a chat by its ID from Firestore
+async function renderChatById(chatId) {
+  if (!currentUser || !chatId) return;
+  try {
+    // Clear current messages except the greeting
+    const firstMessage = messagesContainer.firstElementChild;
+    messagesContainer.innerHTML = '';
+    if (firstMessage) messagesContainer.appendChild(firstMessage);
+    
+    const msgsSnap = await db.collection('users').doc(currentUser.email)
+      .collection('chats').doc(chatId)
+      .collection('messages')
+      .orderBy('timestamp', 'asc')
+      .get();
+    msgsSnap.forEach(doc => {
+      const m = doc.data();
+      if (m.role === 'user') {
+        addUserMessage(m.text);
+      } else {
+        addAssistantMessage(m.text);
+      }
+    });
+    scrollToBottom();
+  } catch (error) {
+    console.error('renderChatById error:', error);
+    showToast('Failed to load chat');
+  }
+}
+
+// Ensure UI defaults and greet first-time users
+async function handleLoginDefaults() {
+  try {
+    if (!currentUser) return;
+    const email = currentUser.email;
+
+    // Apply default UI language to English on login unless user has a preference
+    let preferred = 'en';
+    const userDocRef = db.collection('users').doc(email);
+    const userSnap = await userDocRef.get();
+    if (userSnap.exists && userSnap.data().prefLanguage) {
+      preferred = userSnap.data().prefLanguage;
+    }
+
+    // Reflect in UI and state
+    const pageLanguageSelect = document.getElementById('page-language-select');
+    currentPageLanguage = preferred;
+    if (pageLanguageSelect) pageLanguageSelect.value = preferred;
+    applyPageLanguage(preferred);
+
+    // Default voice recognition/synthesis language to match UI (English default)
+    currentLanguage = preferred === 'kn' ? 'kn-IN' : 'en-IN';
+    const languageSelect = document.getElementById('language-select');
+    if (languageSelect) languageSelect.value = currentLanguage;
+
+    // If this user has no chats yet, start a new chat and greet
+    const chatsSnap = await userDocRef.collection('chats').limit(1).get();
+    if (chatsSnap.empty) {
+      startNewChat();
+      const greeting = getGreetingForLanguage(preferred);
+      // Persist only; UI already has the initial greeting bubble
+      await persistChatAndMessage('assistant', greeting);
+      showQuickActions();
+    }
+  } catch (err) {
+    console.error('handleLoginDefaults error:', err);
+  }
+}
+
+function getGreetingForLanguage(lang) {
+  try {
+    if (lang === 'kn') {
+      // Use the translated Kannada greeting
+      return (translations && translations.kn && translations.kn.chatGreeting) 
+        || 'ನಮಸ್ಕಾರ! ನಾನು ಸದಾ, ನಿಮ್ಮ ಕೃಷಿ ಸಂಗಾತಿ. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?';
+    }
+    // Use the initial DOM English greeting if available, else fallback
+    const node = document.querySelector('p[data-translate="chatGreeting"]');
+    return (node && node.textContent) || 'Hello! I am Sada, your farming companion. How can I help you today?';
+  } catch (e) {
+    return 'Hello! I am Sada, your farming companion. How can I help you today?';
+  }
+}
+
+// Quick actions helpers
+function showQuickActions() {
+  if (quickActions) {
+    quickActions.classList.remove('hidden');
+  }
+}
+
+function hideQuickActions() {
+  if (quickActions) {
+    quickActions.classList.add('hidden');
+  }
+}
+
+function handleQuickAction(type) {
+  // Hide bubbles once a domain is chosen
+  hideQuickActions();
+
+  const isKannada = currentPageLanguage === 'kn';
+
+  const promptsEn = {
+    crop:
+      "To recommend a crop, please share: location (district/state), soil type, available irrigation, season/month, and any constraints (budget, land size).",
+    schemes:
+      "To find relevant government schemes, please provide: state, crop or activity (e.g., irrigation, seeds, machinery), farmer category (small/marginal), and any specific need.",
+    agri:
+      "For agricultural suggestions, please tell me: crop, growth stage, issue or goal (yield, pest, disease), and recent practices used.",
+    weather:
+      "For weather-based advice, please share: your location, crop, field condition (irrigation/drainage), and the time window you care about (next 3–7 days).",
+    emotional:
+      "I'm here to listen. You can share what's on your mind or any stress you're facing. Would you like gentle tips, resources, or just someone to hear you?",
+    profit:
+      "For profit calculation, please share: crop name, area (acres), seed cost, fertilizer cost, irrigation cost, labor cost, yield per acre (optional), and location. I'll calculate profit margin and ROI based on current market rates.",
+    export:
+      "For export guidance, please share: commodity (e.g., Alphonso mango, grapes), quantity, your state/district, and preferred market (domestic wholesale/export). I will provide buyer platforms, mandi/export links, and documentation steps.",
+    exhort:
+      "To help you replace expensive imports by growing locally, please share: your state/district, land size and soil type, water availability, current crops, and what crop/vegetable you are interested in. I will suggest high-value import-substitute crops for your area, give cost-benefit vs importing, step-by-step cultivation and where to sell locally.",
+    market:
+      "For market price information, please tell me the crop you want to sell."
+  };
+
+  const promptsKn = {
+    crop:
+      "ಬೆಳೆ ಶಿಫಾರಸು ಮಾಡಲು: ಸ್ಥಳ (ಜಿಲ್ಲೆ/ರಾಜ್ಯ), ಮಣ್ಣಿನ ಪ್ರಕಾರ, ಲಭ್ಯ ನೀರಾವರಿ, ಋತು/ತಿಂಗಳು, ಮತ್ತು ಯಾವುದೇ ನಿರ್ಬಂಧಗಳು (ಬಜೆಟ್, ಜಮೀನು ಗಾತ್ರ) ತಿಳಿಸಿ.",
+    schemes:
+      "ಸರ್ಕಾರಿ ಯೋಜನೆ ಹುಡುಕಲು: ರಾಜ್ಯ, ಬೆಳೆ/ಕ್ರಿಯೆ (ಉದಾ: ನೀರಾವರಿ, ಬೀಜ, ಯಂತ್ರೋಪಕರಣ), ರೈತರ ವರ್ಗ (ಸಣ್ಣ/ಕನಿಷ್ಠ), ಮತ್ತು ನಿಮ್ಮ ವಿಶೇಷ ಅಗತ್ಯಗಳನ್ನು ತಿಳಿಸಿ.",
+    agri:
+      "ಕೃಷಿ ಸಲಹೆಗೆ: ಬೆಳೆ, ಬೆಳವಣಿಗೆ ಹಂತ, ಸಮಸ್ಯೆ ಅಥವಾ ಗುರಿ (ಉತ್ಪಾದನೆ, ಕೀಟ, ರೋಗ), ಮತ್ತು ಇತ್ತೀಚಿನ ಪದ್ಧತಿಗಳು ತಿಳಿಸಿ.",
+    weather:
+      "ಹವಾಮಾನ ಆಧಾರಿತ ಸಲಹೆಗೆ: ನಿಮ್ಮ ಸ್ಥಳ, ಬೆಳೆ, ಹೊಲದ ಸ್ಥಿತಿ (ನೀರಾವರಿ/ನಿಷ್ಕಾಸ), ಮತ್ತು ಸಮಯಾವಧಿ (ಮುಂದಿನ 3–7 ದಿನಗಳು) ತಿಳಿಸಿ.",
+    emotional:
+      "ನಾನು ಕೇಳಲು ಇಲ್ಲಿದ್ದೇನೆ. ನಿಮ್ಮ ಮನಸ್ಸಿನಲ್ಲಿರುವುದು ಅಥವಾ ಒತ್ತಡವನ್ನು ಹಂಚಿಕೊಳ್ಳಬಹುದು. ಮೃದುವಾದ ಸಲಹೆಗಳು, ಸಂಪನ್ಮೂಲಗಳು ಅಥವಾ ಕೇವಲ ಕೇಳುವವರನ್ನು ಬಯಸುವಿರಾ?",
+    profit:
+      "ಲಾಭ ಲೆಕ್ಕಾಚಾರಕ್ಕಾಗಿ: ಬೆಳೆ ಹೆಸರು, ಪ್ರದೇಶ (ಎಕರೆ), ಬೀಜ ವೆಚ್ಚ, ಗೊಬ್ಬರ ವೆಚ್ಚ, ನೀರಾವರಿ ವೆಚ್ಚ, ಕಾರ್ಮಿಕ ವೆಚ್ಚ, ಪ್ರತಿ ಎಕರೆಗೆ ಉತ್ಪಾದನೆ (ಐಚ್ಛಿಕ), ಮತ್ತು ಸ್ಥಳ ತಿಳಿಸಿ. ಪ್ರಸ್ತುತ ಮಾರುಕಟ್ಟೆ ದರಗಳ ಆಧಾರದ ಮೇಲೆ ನಾನು ಲಾಭ ಮಾರ್ಜಿನ್ ಮತ್ತು ROI ಲೆಕ್ಕಾಚಾರ ಮಾಡುತ್ತೇನೆ.",
+    export:
+      "ರಫ್ತು ಮಾರ್ಗದರ್ಶನಕ್ಕಾಗಿ: ವಸ್ತು (ಉದಾ., ಆಲ್ಫೋನ್ಸೊ ಮಾವು, ದ್ರಾಕ್ಷಿ), ಪ್ರಮಾಣ, ನಿಮ್ಮ ರಾಜ್ಯ/ಜಿಲ್ಲೆ, ಮತ್ತು ಗುರಿ ಮಾರುಕಟ್ಟೆ (ದೇಶೀಯ ಮಂಝಿ/ರಫ್ತು) ತಿಳಿಸಿ. ಖರೀದಿದಾರರ ವೇದಿಕೆಗಳು, ಮಂಝಿ/ರಫ್ತು ಲಿಂಕುಗಳು ಮತ್ತು ದಾಖಲೆ ಹಂತಗಳನ್ನು ನೀಡುತ್ತೇನೆ.",
+    exhort:
+      "ಭಾರತಕ್ಕೆ ದುಬಾರಿ ಆಮದು ಆಗುವ ಬೆಳೆ/ತರಕಾರಿಗಳನ್ನು ಇಲ್ಲಿ ಸ್ಥಳೀಯವಾಗಿ ಬೆಳೆಯಲು ನಿಮಗೆ ಸಹಾಯ ಮಾಡಲು: ನಿಮ್ಮ ರಾಜ್ಯ/ಜಿಲ್ಲೆ, ಜಮೀನು ಗಾತ್ರ ಮತ್ತು ಮಣ್ಣಿನ ಪ್ರಕಾರ, ನೀರಾವರಿ ಲಭ್ಯತೆ, ಈಗ ಬೆಳೆಸುತ್ತಿರುವ ಬೆಳೆಗಳು, ಮತ್ತು ಯಾವ ಬೆಳೆ/ತರಕಾರಿಯಲ್ಲಿ ಆಸಕ್ತಿ ಇದೆ ಎಂಬುದನ್ನು ಹೇಳಿ. ನಿಮ್ಮ ಪ್ರದೇಶಕ್ಕೆ ಸೂಕ್ತವಾದ ಅತ್ಯಂತ ಲಾಭದಾಯಕ ಸ್ಥಳೀಯ ಬೆಳೆಗಳನ್ನು ಶಿಫಾರಸು ಮಾಡಿ, ಆಮದುಗೆ ಹೋಲಿಕೆ ಮಾಡಿದಾಗ ಲಾಭ, ಹಂತ ಹಂತದ ಬೆಳೆ ಮಾರ್ಗದರ್ಶನ ಮತ್ತು ಸ್ಥಳೀಯವಾಗಿ ಮಾರಾಟ ಮಾಡುವ ಸ್ಥಳಗಳನ್ನು ತಿಳಿಸುತ್ತೇನೆ.",
+    market:
+      "ಮಾರುಕಟ್ಟೆ ಬೆಲೆ ಮಾಹಿತಿಗಾಗಿ, ದಯವಿಟ್ಟು ನೀವು ಮಾರಾಟ ಮಾಡಲು ಬಯಸುವ ಬೆಳೆಯನ್ನು ತಿಳಿಸಿ."
+  };
+
+  const openerEn = {
+    crop: "Crop Recommendation",
+    schemes: "Government Schemes",
+    agri: "Agricultural Suggestions",
+    weather: "Weather-based Suggestions on Crops",
+    emotional: "Emotional Support",
+    profit: "Smart Profit Calculator",
+    export: "Export Markets & Buyers",
+    exhort: "Exotic Insights",
+    market: "Market Advice"
+  };
+
+  const openerKn = {
+    crop: "ಬೆಳೆ ಶಿಫಾರಸು",
+    schemes: "ಸರ್ಕಾರಿ ಯೋಜನೆಗಳು",
+    agri: "ಕೃಷಿ ಸಲಹೆಗಳು",
+    weather: "ಹವಾಮಾನ ಆಧಾರಿತ ಬೆಳೆ ಸಲಹೆಗಳು",
+    emotional: "ಭಾವನಾತ್ಮಕ ಬೆಂಬಲ",
+    profit: "ಸ್ಮಾರ್ಟ್ ಲಾಭ ಲೆಕ್ಕಾಚಾರಕ",
+    export: "ರಫ್ತು ಮಾರುಕಟ್ಟೆಗಳು ಮತ್ತು ಖರೀದಿದಾರರು",
+    exhort: "ರಫ್ತು ಆಗುವ ಬೆಳೆ/ತರಕಾರಿಗಳನ್ನು ಸ್ಥಳೀಯವಾಗಿ ಬೆಳೆಯೊಣ",
+    market: "ಮಾರುಕಟ್ಟೆ ಸಲಹೆ"
+  };
+
+  const prompts = isKannada ? promptsKn : promptsEn;
+  const opener = isKannada ? openerKn : openerEn;
+
+  // Add assistant prompt asking for required details
+  addAssistantMessage(`${opener[type]} ${isKannada ? 'ಆಯ್ಕೆ ಮಾಡಲಾಗಿದೆ.' : 'selected.'} ${prompts[type]}`);
+
+  // If Smart Profit Calculator selected, render an inline table-form feature
+  if (type === 'profit') {
+    try { renderProfitCalculatorForm(); } catch (e) { console.error('Render profit form failed:', e); }
+  }
+
+  // Optionally guide user by placeholder
+  const placeholdersEn = {
+    crop: "e.g., Tumakuru, red soil, borewell, Kharif season…",
+    schemes: "e.g., Karnataka, paddy, subsidy for seeds…",
+    agri: "e.g., tomato at flowering, leaf curl issue…",
+    weather: "e.g., Mysuru, maize, plan irrigation for next 5 days…",
+    emotional: "Share anything you're comfortable with…",
+    profit: "e.g., rice, 2 acres, seed 4000, fertilizer 10000, irrigation 8000, labor 12000, yield 50 quintals, Karnataka",
+    export: "e.g., Alphonso mango, 2 MT, Karnataka, export to Gulf wholesale",
+    exhort: "e.g., Bengaluru Rural, 2 acres red loam, borewell, interested in broccoli/avocado",
+    market: "e.g., groundnut"
+  };
+  const placeholdersKn = {
+    crop: "ಉದಾ., ತುಮಕೂರು, ಕೆಂಪು ಮಣ್ಣು, ಬೋರ್‌ವೆಲ್, ಖರಿಫ್…",
+    schemes: "ಉದಾ., ಕರ್ನಾಟಕ, ಅಕ್ಕಿ, ಬೀಜ ಸಹಾಯಧನ…",
+    agri: "ಉದಾ., ಟೊಮೇಟೋ ಹೂವು ಹಂತ, ಎಲೆ ಕುಲು ಮಸುಕು…",
+    weather: "ಉದಾ., ಮೈಸೂರು, ಜೋಳ, ಮುಂದಿನ 5 ದಿನ ನೀರಾವರಿ ಯೋಜನೆ…",
+    emotional: "ಸೌಕರ್ಯವಾಗಿರುವುದನ್ನು ಹಂಚಿಕೊಳ್ಳಿ…",
+    profit: "ಉದಾ., ಅಕ್ಕಿ, 2 ಎಕರೆ, ಬೀಜ 4000, ಗೊಬ್ಬರ 10000, ನೀರಾವರಿ 8000, ಕಾರ್ಮಿಕ 12000, ಉತ್ಪಾದನೆ 50 ಕ್ವಿಂಟಲ್, ಕರ್ನಾಟಕ",
+    export: "ಉದಾ., ಆಲ್ಫೋನ್ಸೊ ಮಾವು, 2 ಟನ್, ಕರ್ನಾಟಕ, ಗಲ್ಫ್ ರಫ್ತು",
+    exhort: "ಉದಾ., ಬೆಂಗಳೂರು ಗ್ರಾಮಾಂತರ, 2 ಎಕರೆ ಕೆಂಪು ಮಣ್ಣು, ಬೋರ್‌ವೆಲ್, ಬ್ರೋಕೊಲಿ/ಅವಕಾಡೊ ಆಸಕ್ತಿ",
+    market: "ಉದಾ., ಶೇಂಗಾ"
+  };
+  const placeholders = isKannada ? placeholdersKn : placeholdersEn;
+  if (messageInput) {
+    messageInput.placeholder = placeholders[type] || (isKannada ? 'ನಿಮ್ಮ ಸಂದೇಶವನ್ನು ಟೈಪ್ ಮಾಡಿ...' : 'Type your message...');
+    messageInput.focus();
+  }
+
+  // Show real-time timestamp when Market Advice is selected
+  // Timestamp for Market Advice is now handled by server-side responses
+
+  // Provide curated resources immediately for export flow
+  if (type === 'export') {
+    const resourcesEn = (
+      '<strong>Key platforms and resources:</strong>\n' +
+      '- <a href="https://apeda.gov.in/" target="_blank">APEDA</a> – Export registration (RCMC), market info, packhouse list\n' +
+      '- <a href="https://agriexchange.apeda.gov.in/" target="_blank">APEDA AgriExchange</a> – Prices, demand, HS codes\n' +
+      '- <a href="https://enam.gov.in/web/" target="_blank">eNAM</a> – National Agricultural Market (domestic wholesale)\n' +
+      '- <a href="https://nafed-india.com/" target="_blank">NAFED</a> – Procurement and buyer linkages\n' +
+      '- <a href="https://www.dgft.gov.in/CP/" target="_blank">DGFT</a> – IEC (Importer Exporter Code)\n' +
+      '- <a href="https://www.icegate.gov.in/" target="_blank">ICEGATE</a> – Customs e-filing\n' +
+      '- <a href="https://fssai.gov.in/" target="_blank">FSSAI</a> – Food safety standards\n' +
+      '- <a href="https://agricoop.nic.in/en" target="_blank">MoA&amp;FW</a> – Schemes and advisories\n' +
+      '- <a href="https://apeda.gov.in/apedawebsite/Announcements/Pack_House_List.htm" target="_blank">APEDA Packhouses</a> – Approved packhouses' 
+    );
+    const resourcesKn = (
+      '<strong>ಮುಖ್ಯ ವೇದಿಕೆಗಳು ಮತ್ತು ಸಂಪನ್ಮೂಲಗಳು:</strong>\n' +
+      '- <a href="https://apeda.gov.in/" target="_blank">APEDA</a> – ರಫ್ತು ನೋಂದಣಿ (RCMC), ಮಾರುಕಟ್ಟೆ ಮಾಹಿತಿ, ಪ್ಯಾಕ್‌ಹೌಸ್ ಪಟ್ಟಿಗಳು\n' +
+      '- <a href="https://agriexchange.apeda.gov.in/" target="_blank">APEDA AgriExchange</a> – ಬೆಲೆ/ಬೇಡಿಕೆ/HS ಕೋಡ್ ಮಾಹಿತಿ\n' +
+      '- <a href="https://enam.gov.in/web/" target="_blank">eNAM</a> – ರಾಷ್ಟ್ರೀಯ ಕೃಷಿ ಮಾರುಕಟ್ಟೆ (ದೇಶೀಯ ಮಂಝಿ)\n' +
+      '- <a href="https://nafed-india.com/" target="_blank">NAFED</a> – ಖರೀದಿ ಮತ್ತು ಲಿಂಕೆಜ್‌ಗಳು\n' +
+      '- <a href="https://www.dgft.gov.in/CP/" target="_blank">DGFT</a> – IEC (ಆಮದು-ರಫ್ತು ಕೋಡ್)\n' +
+      '- <a href="https://www.icegate.gov.in/" target="_blank">ICEGATE</a> – ಕಸ್ಟಮ್ಸ್ ಈ-ಫೈಲಿಂಗ್\n' +
+      '- <a href="https://fssai.gov.in/" target="_blank">FSSAI</a> – ಆಹಾರ ಸುರಕ್ಷತಾ ಮಾನದಂಡಗಳು\n' +
+      '- <a href="https://agricoop.nic.in/en" target="_blank">ಕೃಷಿ ಇಲಾಖೆ</a> – ಯೋಜನೆಗಳು ಮತ್ತು ಸಲಹೆಗಳು\n' +
+      '- <a href="https://apeda.gov.in/apedawebsite/Announcements/Pack_House_List.htm" target="_blank">APEDA ಪ್ಯಾಕ್‌ಹೌಸ್‌ಗಳು</a> – ಅನುಮೋದಿತ ಪ್ಯಾಕ್‌ಹೌಸ್‌ಗಳು'
+    );
+    addAssistantMessage(isKannada ? resourcesKn : resourcesEn);
+  }
+
+  if (type === 'exhort') {
+    const checklistEn = (
+      'To customise your plan, please share:\n' +
+      '- Location (district/state) and soil type\n' +
+      '- Land size and water (irrigation/rainfed)\n' +
+      '- Current crops and market access (mandi/co-op)\n' +
+      '- Preferred crops/vegetables (e.g., broccoli, avocado, blueberry)\n\n' +
+      'I will reply with:\n' +
+      '1) Import-substitute crops that suit your region\n' +
+      '2) Cost-benefit (import vs grow locally)\n' +
+      '3) Step-by-step cultivation plan\n' +
+      '4) Direct selling options (mandi, co-ops, FPOs, retail)\n' +
+      '5) Relevant schemes and agritech best practices'
+    );
+    const checklistKn = (
+      'ವೈಯಕ್ತಿಕ ಪ್ಲ್ಯಾನ್‌ಗೆ, ದಯವಿಟ್ಟು ಹಂಚಿ:\n' +
+      '- ಸ್ಥಳ (ಜಿಲ್ಲೆ/ರಾಜ್ಯ) ಮತ್ತು ಮಣ್ಣಿನ ಪ್ರಕಾರ\n' +
+      '- ಜಮೀನು ಗಾತ್ರ ಮತ್ತು ನೀರಾವರಿ (ನೀರಾವರಿ/ಅವಲಂಬಿತ)\n' +
+      '- ಈಗ ಬೆಳೆಯುತ್ತಿರುವ ಬೆಳೆಗಳು ಮತ್ತು ಮಾರುಕಟ್ಟೆ ಪ್ರವೇಶ (ಮಂಝಿ/ಸಹಕಾರಿ)\n' +
+      '- ಇಷ್ಟದ ಬೆಳೆ/ತರಕಾರಿಗಳು (ಉದಾ., ಬ್ರೋಕೊಲಿ, ಅವಕಾಡೊ, ಬ್ಲೂಬೆರಿ)\n\n' +
+      'ನಾನು ಉತ್ತರಿಸುವುದರಲ್ಲಿ ಇರುತ್ತದೆ:\n' +
+      '1) ನಿಮ್ಮ ಪ್ರದೇಶಕ್ಕೆ ಸೂಕ್ತವಾದ ಆಮದು ಬದಲಾವಣೆ ಬೆಳೆಗಳು\n' +
+      '2) ವೆಚ್ಚ-ಲಾಭ (ಆಮದು vs ಸ್ಥಳೀಯ ಬೆಳೆ)\n' +
+      '3) ಹಂತ ಹಂತದ ಬೆಳೆ ಯೋಜನೆ\n' +
+      '4) ನೇರ ಮಾರಾಟ ಆಯ್ಕೆಗಳು (ಮಂಝಿ, ಸಹಕಾರ, FPO, ಚಿಲ್ಲರೆ)\n' +
+      '5) ಯೋಜನೆಗಳು ಮತ್ತು ಉತ್ತಮ ಕೃಷಿ ತಂತ್ರಗಳು'
+    );
+    addAssistantMessage(isKannada ? checklistKn : checklistEn);
+  }
+}
+
+// OpenAI API Integration with Ollama Offline Support
+async function getAIResponse(userMessage) {
+  // Check network status first
+  const isOnline = navigator.onLine;
+  
+  // If offline, use Ollama directly
+  if (!isOnline) {
+    console.log('Offline mode detected, using Ollama...');
+    return await getOllamaResponse(userMessage);
+  }
+  
+  try {
+    // Build conversation history for context
+    const messages = await buildConversationHistory(userMessage);
+    
+    const response = await fetch(`${API_BASE}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: messages,
+        language: currentPageLanguage || 'en'
+      })
+    });
+
+    // Try to parse JSON even for non-200 to use fallbackResponse
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (e) {
+      // Non-JSON response or network error - try Ollama as fallback
+      console.log('Network error detected, falling back to Ollama...');
+      return await getOllamaResponse(userMessage);
+    }
+
+    // Helper: force Gemini retry via backend
+    async function tryGemini(messagesForRetry) {
+      try {
+        const gemResp = await fetch(`${API_BASE}/api/chat?prefer=gemini`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: messagesForRetry || messages,
+            language: currentPageLanguage || 'en'
+          })
+        });
+        const gemData = await gemResp.json();
+        if (gemResp.ok && gemData && gemData.reply) return gemData.reply;
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    if (!response.ok) {
+      // First, attempt Gemini fallback directly
+      const geminiReply = await tryGemini(messages);
+      if (geminiReply) return geminiReply;
+
+      // If server provided a fallback, use it; otherwise try Ollama
+      const fb = data && (data.fallbackResponse || data.reply);
+      if (fb) return fb;
+      
+      // Network issues - try Ollama as final fallback
+      console.log('All online methods failed, trying Ollama...');
+      return await getOllamaResponse(userMessage);
+    }
+
+    // Successful response; prefer actual reply
+    const primary = data && data.reply;
+    if (primary && typeof primary === 'string' && primary.trim()) return primary.trim();
+
+    // If only fallback came back, try a Gemini retry once
+    const fb = data && data.fallbackResponse;
+    if (fb) {
+      const geminiReply = await tryGemini(messages);
+      if (geminiReply) return geminiReply;
+      return fb;
+    }
+
+    // Last resort
+    return getFallbackResponse();
+  } catch (error) {
+    console.error('API call failed:', error);
+    // Try Ollama as final fallback for any network errors
+    console.log('Exception caught, trying Ollama as final fallback...');
+    try {
+      return await getOllamaResponse(userMessage);
+    } catch (ollamaError) {
+      console.error('Ollama also failed:', ollamaError);
+      throw error; // Return original error if Ollama also fails
+    }
+  }
+}
+
+
+
 
 
 

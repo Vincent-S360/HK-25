@@ -89,6 +89,172 @@ const API_BASE = (function() {
   }
 })();
 
+// Connectivity monitoring
+function getConnectivityLabel(lang, isOnline) {
+  if (lang === 'kn') return isOnline ? 'ಆನ್‌ಲೈನ್' : 'ಆಫ್‌ಲೈನ್';
+  return isOnline ? 'Online' : 'Offline';
+}
+
+function updateConnectivityBadge(isOnline) {
+  if (!connectivityBadge || !connectivityText) return;
+  const lang = currentPageLanguage || 'en';
+  connectivityBadge.classList.toggle('online', isOnline);
+  connectivityBadge.classList.toggle('offline', !isOnline);
+  connectivityText.textContent = getConnectivityLabel(lang, isOnline);
+}
+
+async function checkConnectivity(timeoutMs = 2000) {
+  // If browser reports offline, treat as offline immediately
+  if (!navigator.onLine) return false;
+  // Heartbeat to server root (served by express.static)
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    // Fetch a small static asset to verify server reachability
+    const resp = await fetch('styles.css', { method: 'GET', cache: 'no-store', signal: controller.signal });
+    clearTimeout(timer);
+    return !!resp && resp.ok;
+  } catch (e) {
+    clearTimeout(timer);
+    return false; // timeout or network error => weak/no internet
+  }
+}
+
+function initConnectivityBadge() {
+  // Initial state
+  updateConnectivityBadge(false);
+  // React to browser online/offline events
+  window.addEventListener('online', async () => {
+    const ok = await checkConnectivity();
+    updateConnectivityBadge(ok);
+  });
+  window.addEventListener('offline', () => updateConnectivityBadge(false));
+  // Periodic heartbeat to detect weak connectivity
+  const runHeartbeat = async () => {
+    const ok = await checkConnectivity();
+    updateConnectivityBadge(ok);
+  };
+  runHeartbeat();
+  setInterval(runHeartbeat, 8000);
+}
+
+// User state
+let currentUser = null;
+let pendingChatOpen = false; // set when CTA clicked before login
+
+// Hamburger menu state
+let sidebarActive = false;
+
+// Global variables
+let isListening = false;
+let isSpeaking = false;
+let recognition;
+let currentLanguage = 'en-US';
+let currentPageLanguage = 'en';
+let availableVoices = [];
+// Using window.speechSynthesis directly instead of creating a variable
+// Voice utterance is handled in voice.js
+let currentChatId = null; // Firestore chat document ID for current session
+let previousUserEmail = null; // track last logged-in email
+let speechSynthesis = window.speechSynthesis;
+let utterance = null;
+
+// Global voice control and inactivity tracking
+let voiceEnabled = true; // master toggle for TTS/STT
+let silenceTimeoutId = null;
+let lastUserInteractionAt = Date.now();
+let lastAssistantSpokenAt = 0;
+let initialGreetingSpoken = false;
+const silencePrompts = {
+  en: 'You can click the mic to talk, or type your question.',
+  kn: 'ನೀವು ಮೈಕ್ರೋಫೋನ್ ಬಟನ್ ಕ್ಲಿಕ್ ಮಾಡಿ ಮಾತನಾಡಬಹುದು, ಅಥವಾ ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಟೈಪ್ ಮಾಡಬಹುದು.'
+};
+
+// Image capture follow-up flow
+let lastCapturedImageFile = null; // holds a File from camera/upload until user asks a question
+let imageQuestionPending = false; // when true, next user message will be used to analyze the image
+
+function recordInteraction() {
+  lastUserInteractionAt = Date.now();
+  // Cancel any pending one-shot silence prompt
+  if (silenceTimeoutId) {
+    try { clearTimeout(silenceTimeoutId); } catch (e) {}
+    silenceTimeoutId = null;
+  }
+}
+
+
+// Voice integration functions
+// Initialize speech synthesis voices
+function initVoices() {
+  // Get available voices
+  speechSynthesis.onvoiceschanged = () => {
+    availableVoices = speechSynthesis.getVoices();
+  };
+  
+  // Trigger initial load of voices
+  availableVoices = speechSynthesis.getVoices();
+}
+
+// Get appropriate voice based on language
+function getVoice(lang) {
+  // Default to first available voice if none match
+  let voice = availableVoices[0];
+  
+  // Try to find a matching voice for the language
+  if (lang === 'kn') {
+    // Look for Kannada voice (kn-IN)
+    const kannadaVoice = availableVoices.find(v => v.lang === 'kn-IN' && v.gender === 'female') || 
+                         availableVoices.find(v => v.lang === 'kn-IN') ||
+                         availableVoices.find(v => v.lang.startsWith('kn'));
+    if (kannadaVoice) voice = kannadaVoice;
+  } else {
+    // Look for Indian English voice (en-IN)
+    const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN' && v.gender === 'female') || 
+                               availableVoices.find(v => v.lang === 'en-IN') ||
+                               availableVoices.find(v => v.lang.startsWith('en'));
+    if (indianEnglishVoice) voice = indianEnglishVoice;
+  }
+  
+  return voice;
+}
+
+// Speak text using the appropriate voice
+function speakText(text, lang) {
+  // Stop any ongoing speech
+  if (isSpeaking) {
+    speechSynthesis.cancel();
+  }
+  
+  // Create new utterance
+  utterance = new SpeechSynthesisUtterance(text);
+  
+  // Set language and voice
+  utterance.lang = lang === 'kn' ? 'kn-IN' : 'en-IN';
+  utterance.voice = getVoice(lang);
+  
+  // Set event handlers
+  utterance.onstart = () => {
+    isSpeaking = true;
+  };
+  
+  utterance.onend = () => {
+    isSpeaking = false;
+  };
+  
+  utterance.onerror = (event) => {
+    console.error('SpeechSynthesis error:', event);
+    isSpeaking = false;
+  };
+  
+  // Speak the text
+  speechSynthesis.speak(utterance);
+}
+
+
+
+
+
 
 
 

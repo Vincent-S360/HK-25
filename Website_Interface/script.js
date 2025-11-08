@@ -41,5 +41,33 @@ const qaMarket = document.getElementById('qa-market');
 const connectivityBadge = document.getElementById('connectivity-badge');
 const connectivityText = document.getElementById('connectivity-text');
 
+// Firebase configuration (updated)
+const firebaseConfig = {
+  apiKey: "AIzaSyB6UekFOImueoeXSutffn5tazNDxxNo0IA",
+  authDomain: "salahe-d07fb.firebaseapp.com",
+  databaseURL: "https://salahe-d07fb-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "salahe-d07fb",
+  storageBucket: "salahe-d07fb.firebasestorage.app",
+  messagingSenderId: "613955008577",
+  appId: "1:613955008577:web:5026ff8bfa9c062fd6eec0"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// Resolve API base for different preview contexts (backend server vs Live Server vs file://)
+const API_BASE = (function() {
+  const origin = window.location.origin || '';
+  // If served by backend on localhost:3000, use relative path
+  if (origin.includes('localhost:3000') || origin.includes('127.0.0.1:3000')) return '';
+  // If opened via file:// or any other port (e.g., VS Code Live Server), point to backend on 3000
+  if (window.location.protocol === 'file:' || !origin) return 'http://localhost:3000';
+  // Fallback for other dev hosts: assume backend on localhost:3000
+  return 'http://localhost:3000';
+})();
+
+
 
 

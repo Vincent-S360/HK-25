@@ -835,6 +835,407 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+// Authentication functions
+function showAuthModal() {
+  authModal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function hideAuthModal() {
+  authModal.classList.add('hidden');
+  document.body.style.overflow = 'auto'; // Re-enable scrolling
+}
+
+function setAuthTab(tab) {
+  authTabs.forEach(t => t.classList.remove('active'));
+  if (tab === 'login') {
+    loginForm.classList.remove('hidden');
+    signupForm.classList.add('hidden');
+    const loginTab = document.querySelector('.auth-tab[data-tab="login"]');
+    loginTab && loginTab.classList.add('active');
+  } else {
+    signupForm.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    const signupTab = document.querySelector('.auth-tab[data-tab="signup"]');
+    signupTab && signupTab.classList.add('active');
+  }
+}
+
+function updateAuthHeaderUI() {
+  if (currentUser) {
+    if (headerUser) {
+      headerUser.textContent = currentUser.displayName || currentUser.email;
+      headerUser.classList.remove('hidden');
+    }
+    headerLogin && headerLogin.classList.add('hidden');
+    headerSignup && headerSignup.classList.add('hidden');
+    headerLogout && headerLogout.classList.remove('hidden');
+    chatLogoutButton && chatLogoutButton.classList.remove('hidden');
+  } else {
+    headerUser && headerUser.classList.add('hidden');
+    headerLogin && headerLogin.classList.remove('hidden');
+    headerSignup && headerSignup.classList.remove('hidden');
+    headerLogout && headerLogout.classList.add('hidden');
+    chatLogoutButton && chatLogoutButton.classList.add('hidden');
+  }
+}
+
+// Login function
+async function loginUser(email, password) {
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    return true;
+  } catch (error) {
+    showToast(error.message, 'error');
+    return false;
+  }
+}
+
+// Signup function
+async function signupUser(name, email, password) {
+  try {
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+    await userCredential.user.updateProfile({
+      displayName: name
+    });
+    return true;
+  } catch (error) {
+    showToast(error.message, 'error');
+    return false;
+  }
+}
+
+// Show toast notification
+function showToast(message, type = 'info', duration = 3000) {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  
+  toastContainer.appendChild(toast);
+  
+  // Remove toast after duration
+  if (duration !== Infinity) {
+    setTimeout(() => {
+      toast.classList.add('hide');
+      setTimeout(() => {
+        toast.remove();
+      }, 300);
+    }, duration);
+  }
+  
+  return toast;
+}
+
+// Helper to open chat interface after login
+function openChatInterface() {
+  landingPage.classList.add('hidden');
+  chatInterface.classList.remove('hidden');
+  if (ctaSection) ctaSection.classList.add('hidden');
+  if (siteFooter) siteFooter.classList.add('hidden');
+  
+  // Ensure the initial greeting is visible
+  ensureInitialGreeting();
+  
+  // Always start a fresh chat with greeting when entering chat from landing
+  try { startNewChat(); } catch (e) { console.warn('startNewChat failed on open:', e); }
+  // Show quick actions when chat opens fresh
+  showQuickActions();
+  // Start/refresh inactivity watcher and timestamp
+  recordInteraction();
+  // Attempt to speak the static initial greeting once when chat opens
+  try {
+    if (voiceEnabled && !initialGreetingSpoken) {
+      const initialMessage = document.querySelector('#messages-container .assistant-message .message-bubble p[data-translate="chatGreeting"]');
+      if (initialMessage && initialMessage.textContent) {
+        speakText(initialMessage.textContent, currentPageLanguage);
+        initialGreetingSpoken = true;
+      }
+    }
+  } catch (e) {}
+}
+
+// Ensure initial greeting is always present
+function ensureInitialGreeting() {
+  const messagesContainer = document.getElementById('messages-container');
+  const existingGreeting = messagesContainer.querySelector('.assistant-message');
+  
+  if (!existingGreeting) {
+    // Create the initial greeting if it doesn't exist
+    const greetingHTML = `
+      <div class="message assistant-message">
+        <div class="avatar assistant-avatar">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content">
+          <div class="message-bubble">
+            <p data-translate="chatGreeting">Hello! I am Sada, your farming companion. How can I help you today?</p>
+          </div>
+          <span class="timestamp" id="initial-timestamp"></span>
+        </div>
+      </div>
+    `;
+    messagesContainer.insertAdjacentHTML('afterbegin', greetingHTML);
+    
+    // Apply current language translation
+    applyPageLanguage(currentPageLanguage);
+  }
+}
+
+// Hamburger Menu Functions
+function setupHamburgerMenu() {
+  const hamburgerMenu = document.getElementById('hamburger-menu');
+  const sidebarMenu = document.getElementById('sidebar-menu');
+  const closeSidebar = document.getElementById('close-sidebar');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  const newChatButton = document.getElementById('new-chat');
+  const clearHistoryButton = document.getElementById('clear-history');
+  const settingsButton = document.getElementById('settings-button');
+  const deleteAccountButton = document.getElementById('delete-account');
+  
+  // Toggle sidebar when hamburger icon is clicked
+  hamburgerMenu.addEventListener('click', function() {
+    toggleSidebar();
+  });
+  
+  // Close sidebar when close button is clicked
+  closeSidebar.addEventListener('click', function() {
+    toggleSidebar(false);
+  });
+  
+  // Close sidebar when overlay is clicked
+  sidebarOverlay.addEventListener('click', function() {
+    toggleSidebar(false);
+  });
+  
+  // New chat button functionality
+  newChatButton.addEventListener('click', function() {
+    startNewChat();
+    toggleSidebar(false);
+  });
+  
+  // Clear history button functionality
+  clearHistoryButton.addEventListener('click', function() {
+    clearChatHistory();
+    toggleSidebar(false);
+  });
+  
+  // Settings button functionality
+  settingsButton.addEventListener('click', function() {
+    showToast('Settings feature coming soon');
+    toggleSidebar(false);
+  });
+  // Delete Account button functionality
+  if (deleteAccountButton) {
+    deleteAccountButton.addEventListener('click', async function() {
+      toggleSidebar(false);
+      try { await deleteAccountFlow(); } catch (e) { console.error('Delete account flow error:', e);} 
+    });
+  }
+  
+  // Load chat history initially
+  loadChatHistoryList();
+}
+
+function toggleSidebar(show) {
+  const sidebarMenu = document.getElementById('sidebar-menu');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  
+  if (show === undefined) {
+    sidebarActive = !sidebarActive;
+  } else {
+    sidebarActive = show;
+  }
+  
+  if (sidebarActive) {
+    sidebarMenu.classList.remove('hidden');
+    sidebarOverlay.classList.remove('hidden');
+    setTimeout(() => {
+      sidebarMenu.classList.add('active');
+      sidebarOverlay.classList.add('active');
+    }, 10);
+  } else {
+    sidebarMenu.classList.remove('active');
+    sidebarOverlay.classList.remove('active');
+    setTimeout(() => {
+      sidebarMenu.classList.add('hidden');
+      sidebarOverlay.classList.add('hidden');
+    }, 300);
+  }
+}
+
+async function startNewChat() {
+  // Clear the messages container except for the initial greeting
+  const messagesContainer = document.getElementById('messages-container');
+  // Preserve initial greeting and quick action bubbles
+  const firstMessage = messagesContainer.firstElementChild;
+  const quickActionsEl = document.getElementById('quick-actions');
+  // Clear container, then re-append preserved nodes
+  messagesContainer.innerHTML = '';
+  if (firstMessage) {
+    messagesContainer.appendChild(firstMessage);
+  }
+  if (quickActionsEl) {
+    messagesContainer.appendChild(quickActionsEl);
+  }
+  currentChatId = null; // reset chat session so a new chat doc is created on next send
+  // Reset greeting spoken flag so voice can greet again
+  initialGreetingSpoken = false;
+  
+  // Persist and render a fresh greeting as an assistant message
+  try {
+    const greeting = getGreetingForLanguage(currentPageLanguage || 'en');
+    // Persist only; avoid duplicating the static greeting bubble in UI
+    await persistChatAndMessage('assistant', greeting);
+  } catch (e) {
+    console.warn('Failed to persist/render greeting for new chat:', e);
+  }
+  
+  showToast('Started a new chat');
+  try { showQuickActions(); } catch (e) {}
+}
+
+function clearChatHistory() {
+  if (currentUser) {
+    db.collection('users').doc(currentUser.email).collection('chats').get()
+      .then((snapshot) => {
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        return batch.commit();
+      })
+      .then(() => {
+        showToast('Chat history cleared');
+        loadChatHistoryList();
+      })
+      .catch((error) => {
+        console.error('Error clearing chat history:', error);
+        showToast('Failed to clear chat history');
+      });
+  } else {
+    showToast('Please login to manage chat history');
+  }
+}
+
+// Delete Account flow with confirmation and cleanup
+async function deleteAccountFlow() {
+  if (!currentUser) {
+    showToast('Please login to delete your account', 'error');
+    return;
+  }
+  const isKannada = (currentPageLanguage === 'kn');
+  const warnTitle = isKannada ? 'ಎಚ್ಚರಿಕೆ' : 'Warning';
+  const warnMessage = isKannada
+    ? 'ಇದು ನಿಮ್ಮ ಖಾತೆ ಮತ್ತು ಎಲ್ಲಾ ಚಾಟ್ ಇತಿಹಾಸವನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸುತ್ತದೆ. ಇದನ್ನು ಹಿಂದಿರುಗಿಸಲಾಗುವುದಿಲ್ಲ. ನೀವು ಖಚಿತವೇ?'
+    : 'This will permanently delete your account and all chat history. This cannot be undone. Are you sure?';
+  const proceed = window.confirm(`${warnTitle}: ${warnMessage}`);
+  if (!proceed) {
+    showToast(isKannada ? 'ಅಳಿಸುವಿಕೆ ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ' : 'Deletion cancelled', 'info');
+    return;
+  }
+
+  try {
+    // Delete Firestore chats and messages
+    const userRef = db.collection('users').doc(currentUser.email);
+    const chatsSnap = await userRef.collection('chats').get();
+    for (const chatDoc of chatsSnap.docs) {
+      const msgsSnap = await chatDoc.ref.collection('messages').get();
+      const batch = db.batch();
+      msgsSnap.docs.forEach(m => batch.delete(m.ref));
+      await batch.commit();
+      await chatDoc.ref.delete();
+    }
+    // Delete user doc
+    await userRef.delete().catch(() => {});
+
+    // Delete auth user (may require recent login)
+    await auth.currentUser.delete();
+    showToast(isKannada ? 'ಖಾತೆ ಅಳಿಸಲಾಗಿದೆ' : 'Account deleted', 'success');
+    // Cleanup UI and state
+    try {
+      window.speechSynthesis.cancel(); isSpeaking = false;
+      if (isListening && recognition) { try { recognition.stop(); } catch (e) {} isListening = false; updateMicButtonUI(); }
+    } catch (e) {}
+    // Sign out and return to landing
+    try { await auth.signOut(); } catch (e) {}
+    landingPage.classList.remove('hidden');
+    chatInterface.classList.add('hidden');
+  } catch (err) {
+    console.error('Delete account error:', err);
+    if (String(err && err.code).includes('requires-recent-login')) {
+      showToast(isKannada ? 'ದಯವಿಟ್ಟು ಮರುಲಾಗಿನ್ ಮಾಡಿ ನಂತರ ಪುನಃ ಪ್ರಯತ್ನಿಸಿ' : 'Please re-login and try again', 'error');
+    } else {
+      showToast(isKannada ? 'ಖಾತೆ ಅಳಿಸಲು ವಿಫಲವಾಗಿದೆ' : 'Failed to delete account', 'error');
+    }
+  }
+}
+
+function loadChatHistoryList() {
+  const chatHistoryList = document.getElementById('chat-history-list');
+  
+  // Clear existing history items
+  chatHistoryList.innerHTML = '';
+  
+  if (!currentUser) {
+    const emptyMessage = document.createElement('div');
+    emptyMessage.className = 'empty-history-message';
+    emptyMessage.textContent = 'Login to see your chat history';
+    chatHistoryList.appendChild(emptyMessage);
+    return;
+  }
+  
+  // Get chat history from Firestore
+  db.collection('users').doc(currentUser.email).collection('chats')
+    .orderBy('timestamp', 'desc')
+    .limit(10)
+    .get()
+    .then((snapshot) => {
+      if (snapshot.empty) {
+        const emptyMessage = document.createElement('div');
+        emptyMessage.className = 'empty-history-message';
+        emptyMessage.textContent = 'No chat history yet';
+        chatHistoryList.appendChild(emptyMessage);
+        return;
+      }
+      
+      snapshot.forEach((doc) => {
+        const chatData = doc.data();
+        const chatItem = document.createElement('div');
+        chatItem.className = 'chat-history-item';
+        chatItem.dataset.chatId = doc.id;
+        
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-comment';
+        
+        const text = document.createElement('span');
+        // Use the first message or a default text
+        const chatDate = chatData.timestamp ? new Date(chatData.timestamp.toDate()).toLocaleDateString() : 'Unknown date';
+        text.textContent = chatData.title || 'Chat ' + chatDate;
+        
+        chatItem.appendChild(icon);
+        chatItem.appendChild(text);
+        
+        // Add click event to load this chat
+        chatItem.addEventListener('click', () => {
+          showToast('Loading chat...');
+          currentChatId = chatItem.dataset.chatId;
+          toggleSidebar(false);
+          renderChatById(currentChatId);
+        });
+        
+        chatHistoryList.appendChild(chatItem);
+      });
+    })
+    .catch((error) => {
+      console.error('Error loading chat history:', error);
+      const emptyMessage = document.createElement('div');
+      emptyMessage.className = 'empty-history-message';
+      emptyMessage.textContent = 'Failed to load chat history';
+      chatHistoryList.appendChild(emptyMessage);
+    });
+}
+
+
 
 
 

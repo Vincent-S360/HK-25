@@ -336,6 +336,21 @@ body {
 .connectivity-badge.offline .dot {
   background: #ef4444;
 }
+.connectivity-badge.local-mode {
+  background: linear-gradient(135deg, #FF9800, #F57C00);
+  color: white;
+  border-color: #F57C00;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+  animation: pulse 2s infinite;
+}
+.connectivity-badge.local-mode .dot {
+  background: white;
+}
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
 
 .voice-toggle {
   display: inline-flex;

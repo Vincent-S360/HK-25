@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connectivity Badge Test</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div style="padding: 20px;">
+        <h1>Connectivity Badge Test</h1>
+        
+        <!-- This is the connectivity badge from your main page -->
+        <div id="connectivity-badge" class="connectivity-badge offline">
+            <span class="dot"></span>
+            <span id="connectivity-text">Offline</span>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button onclick="testConnectivity()">Test Connectivity</button>
+            <button onclick="forceOnline()">Force Online</button>
+            <button onclick="forceOffline()">Force Offline</button>
+        </div>
+        
+        <div id="status" style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+            Ready to test...
+        </div>
+    </div>
+
+    <script>
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML = '<strong>Status:</strong> ' + message;
+        }
+
+        async function testConnectivity() {
+            updateStatus('Testing connectivity...');
+            
+            try {
+                // Test the same connectivity check as your main script
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                
+                const response = await fetch('style.css', {
+                    method: 'GET',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                const isOnline = response.ok && navigator.onLine;
+                
+                updateStatus(`
+                    navigator.onLine: ${navigator.onLine}<br>
+                    Server response: ${response.status}<br>
+                    Connectivity result: ${isOnline ? 'ONLINE' : 'OFFLINE'}
+                `);
+                
+                // Update the badge
+                const badge = document.getElementById('connectivity-badge');
+                const text = document.getElementById('connectivity-text');
+                
+                if (isOnline) {
+                    badge.classList.remove('offline');
+                    badge.classList.add('online');
+                    text.textContent = 'Online';
+                } else {
+                    badge.classList.remove('online');
+                    badge.classList.add('offline');
+                    text.textContent = 'Offline';
+                }
+                
+            } catch (error) {
+                updateStatus(`ERROR: ${error.message}`);
+                
+                // Force offline
+                const badge = document.getElementById('connectivity-badge');
+                const text = document.getElementById('connectivity-text');
+                badge.classList.remove('online');
+                badge.classList.add('offline');
+                text.textContent = 'Offline';
+            }
+        }
+
+        function forceOnline() {
+            const badge = document.getElementById('connectivity-badge');
+            const text = document.getElementById('connectivity-text');
+            badge.classList.remove('offline');
+            badge.classList.add('online');
+            text.textContent = 'Online';
+            updateStatus('Forced ONLINE state');
+        }
+
+        function forceOffline() {
+            const badge = document.getElementById('connectivity-badge');
+            const text = document.getElementById('connectivity-text');
+            badge.classList.remove('online');
+            badge.classList.add('offline');
+            text.textContent = 'Offline';
+            updateStatus('Forced OFFLINE state');
+        }
+
+        // Test connectivity on page load
+        window.addEventListener('load', () => {
+            setTimeout(testConnectivity, 1000);
+        });
+    </script>
+</body>
+</html>

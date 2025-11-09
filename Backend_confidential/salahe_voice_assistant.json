@@ -1,0 +1,39 @@
+{
+  "name": "Salahe_Voice_Assistant_Flow",
+  "description": "Voice-enabled AI assistant for farmers – integrates Firebase Auth, Firestore, GPT-4o (SADA), and voice interaction (Kannada + English).",
+  "nodes": [
+    {
+      "id": "1",
+      "type": "code",
+      "name": "Initialize Firebase",
+      "language": "javascript",
+      "code": "import { initializeApp } from 'firebase/app';\nimport { getAuth, signInWithEmailAndPassword } from 'firebase/auth';\nimport { getFirestore, addDoc, collection, serverTimestamp } from 'firebase/firestore';\n\n// Paste your Firebase config here\nconst firebaseConfig = {\n  apiKey: 'YOUR_API_KEY',\n  authDomain: 'YOUR_AUTH_DOMAIN',\n  projectId: 'YOUR_PROJECT_ID',\n  storageBucket: 'YOUR_STORAGE_BUCKET',\n  messagingSenderId: 'YOUR_SENDER_ID',\n  appId: 'YOUR_APP_ID'\n};\n\nconst app = initializeApp(firebaseConfig);\nconst auth = getAuth(app);\nconst db = getFirestore(app);"
+    },
+    {
+      "id": "2",
+      "type": "code",
+      "name": "Login Popup",
+      "language": "javascript",
+      "code": "async function loginUser() {\n  const email = prompt('Enter your email:');\n  const password = prompt('Enter your password:');\n  try {\n    await signInWithEmailAndPassword(auth, email, password);\n    alert('✅ Login successful!');\n  } catch (e) {\n    alert('❌ Login failed: ' + e.message);\n  }\n}\n\n// Auto-trigger login on page load\nwindow.onload = () => {\n  loginUser();\n};"
+    },
+    {
+      "id": "3",
+      "type": "code",
+      "name": "Speech and Chat Flow",
+      "language": "javascript",
+      "code": "const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();\nrecognition.lang = 'kn-IN';\n\nrecognition.onstart = () => { showListening(true); };\nrecognition.onend = () => { showListening(false); };\nrecognition.onresult = async (event) => {\n  const transcript = event.results[0][0].transcript;\n  addMessage('user', transcript);\n  await sendToAI(transcript);\n};\n\nfunction speak(text) {\n  const utter = new SpeechSynthesisUtterance(text);\n  utter.lang = /[\\u0C80-\\u0CFF]/.test(text) ? 'kn-IN' : 'en-IN';\n  speechSynthesis.speak(utter);\n}\n\nfunction showListening(state) {\n  const mic = document.getElementById('mic-status');\n  if (mic) mic.innerText = state ? '🎙️ Listening…' : '🎤 Tap to speak';\n}\n\nfunction showThinking(state) {\n  const status = document.getElementById('ai-status');\n  if (status) status.innerText = state ? '🤔 Sada is thinking…' : '';\n}\n\nfunction addMessage(role, text) {\n  const chat = document.getElementById('chat');\n  const msg = document.createElement('div');\n  msg.className = role;\n  msg.textContent = text;\n  chat.appendChild(msg);\n  chat.scrollTop = chat.scrollHeight;\n}"
+    },
+    {
+      "id": "4",
+      "type": "code",
+      "name": "AI Integration (GPT-4o)",
+      "language": "javascript",
+      "code": "async function sendToAI(userText) {\n  showThinking(true);\n  try {\n    const response = await fetch('https://api.openai.com/v1/chat/completions', {\n      method: 'POST',\n      headers: {\n        'Content-Type': 'application/json',\n        'Authorization': `Bearer ${process.env.OpenAI}`\n      },\n      body: JSON.stringify({\n        model: 'gpt-4o',\n        messages: [\n          { role: 'system', content: 'You are SADA, an empathetic agricultural assistant for Indian farmers. Speak in clear, kind, bilingual Kannada and English, providing farming, weather, crop, and scheme help naturally.' },\n          { role: 'user', content: userText }\n        ]\n      })\n    });\n\n    const data = await response.json();\n    const reply = data.choices?.[0]?.message?.content || '⚠️ No response from AI.';\n    addMessage('ai', reply);\n    speak(reply);\n\n    await addDoc(collection(db, 'chats'), {\n      user: userText,\n      ai: reply,\n      time: serverTimestamp()\n    });\n  } catch (e) {\n    addMessage('ai', '⚠️ Sorry, I’m having trouble right now.');\n  } finally {\n    showThinking(false);\n  }\n}"
+    }
+  ],
+  "connections": [
+    { "from": "1", "to": "2" },
+    { "from": "2", "to": "3" },
+    { "from": "3", "to": "4" }
+  ]
+}

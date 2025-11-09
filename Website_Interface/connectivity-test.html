@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connectivity Test - SALAHE</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .test-container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+            max-width: 500px;
+        }
+        .status {
+            font-size: 1.5rem;
+            margin: 1rem 0;
+            padding: 1rem;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .online {
+            background: rgba(76, 175, 80, 0.8);
+        }
+        .offline {
+            background: rgba(244, 67, 54, 0.8);
+        }
+        .test-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid white;
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        .test-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        .results {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🌾 SALAHE Connectivity Test</h1>
+        <div id="status" class="status offline">Checking connectivity...</div>
+        <div>
+            <button class="test-button" onclick="testConnectivity()">Test Connectivity</button>
+            <button class="test-button" onclick="testAPI()">Test AI API</button>
+            <button class="test-button" onclick="testHeartbeat()">Test Heartbeat</button>
+        </div>
+        <div id="results" class="results" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Connectivity test functions
+        async function checkConnectivity(timeoutMs = 2000) {
+            if (!navigator.onLine) return false;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const resp = await fetch('style.css', { method: 'GET', cache: 'no-store', signal: controller.signal });
+                clearTimeout(timer);
+                return !!resp && resp.ok;
+            } catch (e) {
+                clearTimeout(timer);
+                return false;
+            }
+        }
+
+        async function testConnectivity() {
+            const statusEl = document.getElementById('status');
+            const resultsEl = document.getElementById('results');
+            
+            statusEl.textContent = 'Testing connectivity...';
+            statusEl.className = 'status';
+            
+            const startTime = Date.now();
+            const isConnected = await checkConnectivity();
+            const endTime = Date.now();
+            
+            statusEl.textContent = isConnected ? '🟢 ONLINE - System is working!' : '🔴 OFFLINE - Connection issues detected';
+            statusEl.className = isConnected ? 'status online' : 'status offline';
+            
+            resultsEl.style.display = 'block';
+            resultsEl.innerHTML = `
+                <strong>Connectivity Test Results:</strong><br>
+                Navigator Online: ${navigator.onLine}<br>
+                Server Reachable: ${isConnected}<br>
+                Response Time: ${endTime - startTime}ms<br>
+                Timestamp: ${new Date().toLocaleString()}
+            `;
+        }
+
+        async function testAPI() {
+            const statusEl = document.getElementById('status');
+            const resultsEl = document.getElementById('results');
+            
+            statusEl.textContent = 'Testing AI API...';
+            statusEl.className = 'status';
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: [{ role: 'user', content: 'Hello' }],
+                        language: 'en'
+                    })
+                });
+                const endTime = Date.now();
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusEl.textContent = '🟢 AI API Working!';
+                    statusEl.className = 'status online';
+                    
+                    resultsEl.style.display = 'block';
+                    resultsEl.innerHTML = `
+                        <strong>AI API Test Results:</strong><br>
+                        Status: ${response.status} ${response.statusText}<br>
+                        Response Time: ${endTime - startTime}ms<br>
+                        AI Response: "${data.reply.substring(0, 100)}..."<br>
+                        Source: ${data.source}<br>
+                        Timestamp: ${new Date().toLocaleString()}
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                statusEl.textContent = '🔴 AI API Failed!';
+                statusEl.className = 'status offline';
+                
+                resultsEl.style.display = 'block';
+                resultsEl.innerHTML = `
+                    <strong>AI API Test Failed:</strong><br>
+                    Error: ${error.message}<br>
+                    Timestamp: ${new Date().toLocaleString()}
+                `;
+            }
+        }
+
+        async function testHeartbeat() {
+            const resultsEl = document.getElementById('results');
+            resultsEl.style.display = 'block';
+            resultsEl.innerHTML = 'Running heartbeat test...<br>';
+            
+            let successCount = 0;
+            let failureCount = 0;
+            
+            for (let i = 0; i < 5; i++) {
+                const isConnected = await checkConnectivity();
+                if (isConnected) {
+                    successCount++;
+                    resultsEl.innerHTML += `Test ${i + 1}: ✅ Connected<br>`;
+                } else {
+                    failureCount++;
+                    resultsEl.innerHTML += `Test ${i + 1}: ❌ Failed<br>`;
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            const overallSuccess = successCount > failureCount;
+            resultsEl.innerHTML += `<br><strong>Overall Result:</strong> ${overallSuccess ? '✅ Stable Connection' : '❌ Unstable Connection'} (${successCount}/5 successful)`;
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', async () => {
+            await testConnectivity();
+        });
+
+        // Monitor connectivity changes
+        window.addEventListener('online', async () => {
+            await testConnectivity();
+        });
+
+        window.addEventListener('offline', async () => {
+            await testConnectivity();
+        });
+    </script>
+</body>
+</html>

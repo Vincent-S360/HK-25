@@ -63,3 +63,40 @@ That question became **Salahe** — *Advice, Always.*
 
 ---
 
+## 🧩 System Architecture
+
+```plaintext
+🎙️ Voice Input
+      ↓
+[Speech-to-Text API]
+      ↓
+🧠 SADA (AI Core)
+ → Gemini (Primary)
+ → OpenAI (Fallback)
+ → Ollama (Offline English)
+      ↓
+[Response Processing + Translation]
+      ↓
+💬 Voice + Text Output
+      ↓
+☁️ Firebase (Auth + Firestore Logging)
+
+### 📴 Offline System Flow & Architecture
+
+```plaintext
+Internet available? 
+   ↓
+✅ YES → Normal flow (Gemini → OpenAI)
+   ↓
+User gets full bilingual voice-enabled chat
+
+❌ NO → Offline fallback activated
+   ↓
+1. Local Ollama service starts (pre-installed)
+2. Aya model (multilingual text LLM) handles text chat in English
+3. Sada switches to offline mode message:
+   "Offline mode active — answering locally."
+4. Farmer types question → Ollama Aya replies instantly (text-only)
+5. Chat stored locally or in cache until connection returns
+6. Once online, chats sync to Firebase automatically
+

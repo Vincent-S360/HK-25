@@ -89,29 +89,66 @@ const API_BASE = (function() {
   }
 })();
 
-// Connectivity monitoring
-function getConnectivityLabel(lang, isOnline) {
+// Enhanced connectivity monitoring with server reachability tracking
+let isServerReachable = false;
+let isUsingLocalMode = false;
+
+function getConnectivityLabel(lang, isOnline, isLocalMode = false) {
+  if (isLocalMode) return lang === 'kn' ? 'ಸ್ಥಳೀಯ ಮೋಡ್' : 'Local Mode';
   if (lang === 'kn') return isOnline ? 'ಆನ್‌ಲೈನ್' : 'ಆಫ್‌ಲೈನ್';
   return isOnline ? 'Online' : 'Offline';
 }
 
-function updateConnectivityBadge(isOnline) {
+function updateConnectivityBadge(isOnline, isLocalMode = false) {
   if (!connectivityBadge || !connectivityText) return;
   const lang = currentPageLanguage || 'en';
-  connectivityBadge.classList.toggle('online', isOnline);
-  connectivityBadge.classList.toggle('offline', !isOnline);
-  connectivityText.textContent = getConnectivityLabel(lang, isOnline);
+  
+  // Reset all states
+  connectivityBadge.classList.remove('online', 'offline', 'local-mode');
+  
+  if (isLocalMode) {
+    connectivityBadge.classList.add('local-mode');
+    connectivityText.textContent = getConnectivityLabel(lang, isOnline, true);
+  } else {
+    connectivityBadge.classList.toggle('online', isOnline);
+    connectivityBadge.classList.toggle('offline', !isOnline);
+    connectivityText.textContent = getConnectivityLabel(lang, isOnline, false);
+  }
+}
+
+async function checkServerReachability(timeoutMs = 3000) {
+  // If browser reports offline, server is unreachable
+  if (!navigator.onLine) return false;
+  
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    // Try to reach the backend server API endpoint
+    const resp = await fetch(`${API_BASE}/api/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    return !!resp && resp.ok;
+  } catch (e) {
+    clearTimeout(timer);
+    return false; // server unreachable
+  }
 }
 
 async function checkConnectivity(timeoutMs = 2000) {
   // If browser reports offline, treat as offline immediately
   if (!navigator.onLine) return false;
-  // Heartbeat to server root (served by express.static)
+  
+  // First check if we can reach basic static assets (internet connectivity)
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  
   try {
-    // Fetch a small static asset to verify server reachability
-    const resp = await fetch('styles.css', { method: 'GET', cache: 'no-store', signal: controller.signal });
+    // Fetch a small static asset to verify basic internet connectivity
+    const resp = await fetch('style.css', { method: 'GET', cache: 'no-store', signal: controller.signal });
     clearTimeout(timer);
     return !!resp && resp.ok;
   } catch (e) {
@@ -120,20 +157,93 @@ async function checkConnectivity(timeoutMs = 2000) {
   }
 }
 
+// Check if backend server is reachable
+async function checkServerReachability(timeoutMs = 3000) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    
+    const response = await fetch(`${API_BASE}/api/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timer);
+    return response.ok;
+  } catch (error) {
+    clearTimeout(timer);
+    console.log('Server health check failed:', error.message);
+    return false;
+  }
+}
+
 function initConnectivityBadge() {
-  // Initial state
-  updateConnectivityBadge(false);
+  // Initial state - will be updated by first heartbeat
+  updateConnectivityBadge(false, false);
+  
+  // Set initial connectivity state immediately
+  (async () => {
+    const hasInternet = await checkConnectivity();
+    if (!hasInternet) {
+      isServerReachable = false;
+      isUsingLocalMode = true;
+      updateConnectivityBadge(false, true);
+    } else {
+      const serverReachable = await checkServerReachability();
+      isServerReachable = serverReachable;
+      isUsingLocalMode = !serverReachable;
+      updateConnectivityBadge(true, !serverReachable);
+      
+      if (isUsingLocalMode) {
+        console.log('🔄 Initial state: Local mode active, using Ollama');
+      } else {
+        console.log('🌐 Initial state: Online mode active, using cloud APIs');
+      }
+    }
+  })();
+  
   // React to browser online/offline events
   window.addEventListener('online', async () => {
-    const ok = await checkConnectivity();
-    updateConnectivityBadge(ok);
+    const serverReachable = await checkServerReachability();
+    isServerReachable = serverReachable;
+    isUsingLocalMode = !serverReachable;
+    updateConnectivityBadge(true, !serverReachable);
   });
-  window.addEventListener('offline', () => updateConnectivityBadge(false));
-  // Periodic heartbeat to detect weak connectivity
+  
+  window.addEventListener('offline', () => {
+    isServerReachable = false;
+    isUsingLocalMode = true;
+    updateConnectivityBadge(false, true);
+  });
+  
+  // Enhanced periodic heartbeat to detect server reachability
   const runHeartbeat = async () => {
-    const ok = await checkConnectivity();
-    updateConnectivityBadge(ok);
+    // Check basic internet connectivity first
+    const hasInternet = await checkConnectivity();
+    
+    if (!hasInternet) {
+      // No internet at all
+      isServerReachable = false;
+      isUsingLocalMode = true;
+      updateConnectivityBadge(false, true);
+      return;
+    }
+    
+    // Have internet, check if server is reachable
+    const serverReachable = await checkServerReachability();
+    isServerReachable = serverReachable;
+    isUsingLocalMode = !serverReachable;
+    updateConnectivityBadge(true, !serverReachable);
+    
+    // Log mode changes for debugging
+    if (isUsingLocalMode) {
+      console.log('🔄 Local mode active: Server unreachable, using Ollama');
+    } else {
+      console.log('🌐 Online mode active: Server reachable, using cloud APIs');
+    }
   };
+  
   runHeartbeat();
   setInterval(runHeartbeat, 8000);
 }
@@ -1466,7 +1576,10 @@ function addAssistantMessage(message) {
   try {
     const chatOpen = !chatInterface.classList.contains('hidden');
     if (voiceEnabled && chatOpen && typeof speakText === 'function') {
-      speakText(message, currentPageLanguage);
+      // Use the language of the last user message for speech synthesis
+      const lastUserMessage = getLastUserMessage();
+      const userLanguage = lastUserMessage ? detectUserLanguage(lastUserMessage) : (currentPageLanguage || 'en');
+      speakText(message, userLanguage);
     }
   } catch (e) {}
 }
@@ -1904,15 +2017,42 @@ async function getAIResponse(userMessage) {
   // Check network status first
   const isOnline = navigator.onLine;
   
-  // If offline, use Ollama directly
-  if (!isOnline) {
-    console.log('Offline mode detected, using Ollama...');
-    return await getOllamaResponse(userMessage);
+  // Use enhanced connectivity detection: check if server is reachable
+  // If offline OR server is unreachable, use Ollama
+  if (!isOnline || isUsingLocalMode) {
+    // If we have internet but server was unreachable, try to check server again
+    if (isOnline && isUsingLocalMode) {
+      console.log('Local mode active, checking if server is back online...');
+      const serverReachable = await checkServerReachability();
+      
+      if (serverReachable) {
+        console.log('🎉 Server is back online! Switching to cloud APIs...');
+        isServerReachable = true;
+        isUsingLocalMode = false;
+        updateConnectivityBadge(true, false);
+        showToast('🌐 Back online! Connected to cloud services.', 'success');
+        // Continue to online API flow below
+      } else {
+        console.log('Server still unreachable, continuing with Ollama...');
+        return await getOllamaResponse(userMessage);
+      }
+    } else {
+      // No internet or previously confirmed offline
+      if (!isOnline) {
+        console.log('Offline mode detected, using Ollama...');
+      } else {
+        console.log('Server unreachable, switching to local Ollama mode...');
+      }
+      return await getOllamaResponse(userMessage);
+    }
   }
   
   try {
     // Build conversation history for context
     const messages = await buildConversationHistory(userMessage);
+    
+    // Detect the language of user input for API calls
+    const userLanguage = detectUserLanguage(userMessage);
     
     const response = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
@@ -1921,7 +2061,7 @@ async function getAIResponse(userMessage) {
       },
       body: JSON.stringify({
         messages: messages,
-        language: currentPageLanguage || 'en'
+        language: userLanguage || 'en'
       })
     });
 
@@ -1943,7 +2083,7 @@ async function getAIResponse(userMessage) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: messagesForRetry || messages,
-            language: currentPageLanguage || 'en'
+            language: userLanguage || 'en'
           })
         });
         const gemData = await gemResp.json();
@@ -1984,6 +2124,15 @@ async function getAIResponse(userMessage) {
     return getFallbackResponse();
   } catch (error) {
     console.error('API call failed:', error);
+    
+    // Update connectivity state since server seems unreachable
+    if (isOnline) {
+      isServerReachable = false;
+      isUsingLocalMode = true;
+      updateConnectivityBadge(true, true);
+      console.log('Server unreachable detected, switching to local mode');
+    }
+    
     // Try Ollama as final fallback for any network errors
     console.log('Exception caught, trying Ollama as final fallback...');
     try {
@@ -1995,16 +2144,54 @@ async function getAIResponse(userMessage) {
   }
 }
 
+// Detect language of user input
+function detectUserLanguage(text) {
+  // Check for Kannada script (Unicode range for Kannada: 0C80-0CFF)
+  if (/[\u0C80-\u0CFF]/.test(text)) {
+    return 'kn';
+  }
+  
+  // Check for common Kannada words/phrases
+  const kannadaWords = [
+    'ಹಾಯ್', 'ನಮಸ್ಕಾರ', 'ಧನ್ಯವಾದ', 'ಹೌದು', 'ಇಲ್ಲ', 'ಏನು', 'ಹೇಗೆ', 'ಯಾವುದು', 'ಎಲ್ಲಿ', 'ಯಾವಾಗ',
+    'ಬೆಳೆ', 'ಕೃಷಿ', 'ರೈತ', 'ಹವಾಮಾನ', 'ಮಳೆ', 'ಬೀಜ', 'ಎರೆ', 'ನೀರು', 'ಭೂಮಿ', 'ಗೊಬ್ಬರ'
+  ];
+  
+  const textLower = text.toLowerCase();
+  const kannadaWordMatches = kannadaWords.filter(word => textLower.includes(word.toLowerCase()));
+  
+  // If more than 2 Kannada words are found, consider it Kannada
+  if (kannadaWordMatches.length > 2) {
+    return 'kn';
+  }
+  
+  // Default to English
+  return 'en';
+}
+
+// Get the last user message from the chat
+function getLastUserMessage() {
+  const userMessages = messagesContainer.querySelectorAll('.user-message .message-bubble');
+  if (userMessages.length > 0) {
+    const lastMessage = userMessages[userMessages.length - 1];
+    return lastMessage.textContent || lastMessage.innerText || '';
+  }
+  return null;
+}
+
 // Ollama API Integration for Offline Support
 async function getOllamaResponse(userMessage) {
   try {
-    console.log('Calling Ollama API with Aya model...');
+    console.log('Calling Ollama API with Llama3 model...');
     
     // Show toast notification for offline mode
     showToast('💬 Offline mode: Sada is replying locally.', 'info');
     
-    // Create a simple prompt that maintains Sada's personality
-    const systemPrompt = `You are Sada, an empathetic AI assistant for farmers. You provide helpful agricultural advice in both English and Kannada. Keep responses concise but caring. Current language preference: ${currentPageLanguage || 'en'}`;
+    // Detect the language of user input
+    const userLanguage = detectUserLanguage(userMessage);
+    
+    // Create a focused farming prompt for Llama3
+    const systemPrompt = `You are Sada, a knowledgeable farming assistant. You specialize in Indian agriculture, crops, farming techniques, weather advice, and government schemes. Be helpful, practical, and culturally aware. Respond in ${userLanguage === 'kn' ? 'Kannada' : 'English'}. Keep responses concise but informative.`;
     
     const fullPrompt = `${systemPrompt}\n\nUser: ${userMessage}\nSada:`;
     
@@ -2014,12 +2201,13 @@ async function getOllamaResponse(userMessage) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'aya',
+        model: 'llama3:latest',
         prompt: fullPrompt,
         stream: false,
         options: {
-          temperature: 0.7,
-          max_tokens: 500
+          temperature: 0.3,
+          num_predict: 150,
+          top_p: 0.9
         }
       })
     });
@@ -2031,7 +2219,7 @@ async function getOllamaResponse(userMessage) {
     const data = await response.json();
     
     if (data && data.response) {
-      console.log('Aya response received successfully');
+      console.log('Llama3 response received successfully');
       return data.response.trim();
     } else {
       throw new Error('Invalid response from Ollama');
@@ -2039,10 +2227,13 @@ async function getOllamaResponse(userMessage) {
   } catch (error) {
     console.error('Ollama API call failed:', error);
     
-    // Return a basic offline fallback message
-    const offlineFallback = currentPageLanguage === 'kn' 
-      ? 'ಕ್ಷಮಿಸಿ, ನಾನು ಈಗ ಆಫ್‌ಲೈನ್ ಮೋಡ್‌ನಲ್ಲಿದ್ದೇನೆ ಮತ್ತು ಸೀಮಿತ ಸೇವೆಗಳನ್ನು ಮಾತ್ರ ಒದಗಿಸಬಲ್ಲೆ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಇಂಟರ್ನೆಟ್ ಸಂಪರ್ಕವನ್ನು ಪರಿಶೀಲಿಸಿ.'
-      : 'Sorry, I am currently in offline mode and can only provide limited assistance. Please check your internet connection.';
+    // Detect user language for fallback message
+    const userLanguage = detectUserLanguage(userMessage);
+    
+    // Return a more helpful offline fallback message in user's language
+    const offlineFallback = userLanguage === 'kn' 
+      ? 'ನಾನು ಈಗ ಸ್ಥಳೀಯ ಮೋಡ್‌ನಲ್ಲಿ ಕೆಲಸ ಮಾಡುತ್ತಿದ್ದೇನೆ. ನಾನು ಇನ್ನೂ ಕೃಷಿ ಸಲಹೆಗಳು, ಬೆಳೆ ಶಿಫಾರಸುಗಳು ಮತ್ತು ಸಾಮಾನ್ಯ ಕೃಷಿ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸಬಹುದು. ನೀವು ಏನು ಕೇಳಲು ಬಯಸುತ್ತೀರಿ?'
+      : 'I am currently working in local mode. I can still provide farming advice, crop recommendations, and answer general agricultural questions. What would you like to ask?';
     
     return offlineFallback;
   }

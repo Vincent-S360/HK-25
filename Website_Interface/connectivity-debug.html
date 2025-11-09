@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connectivity Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .online { background: #d4edda; color: #155724; }
+        .offline { background: #f8d7da; color: #721c24; }
+        .test-results { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Connectivity Debug Test</h1>
+    
+    <div id="browser-status" class="status">Checking browser status...</div>
+    <div id="server-status" class="status">Checking server connection...</div>
+    <div id="connectivity-badge-status" class="status">Checking connectivity badge...</div>
+    
+    <div class="test-results">
+        <h3>Test Results:</h3>
+        <div id="test-output"></div>
+    </div>
+
+    <script>
+        const output = document.getElementById('test-output');
+        
+        function log(message) {
+            output.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+
+        // Test 1: Browser online status
+        const browserOnline = navigator.onLine;
+        document.getElementById('browser-status').className = 'status ' + (browserOnline ? 'online' : 'offline');
+        document.getElementById('browser-status').textContent = 'Browser online: ' + browserOnline;
+        log('Browser online status: ' + browserOnline);
+
+        // Test 2: Server connection test
+        async function testServerConnection() {
+            try {
+                const response = await fetch('/style.css', {
+                    method: 'HEAD',
+                    cache: 'no-cache',
+                    timeout: 2000
+                });
+                
+                const serverOnline = response.ok;
+                document.getElementById('server-status').className = 'status ' + (serverOnline ? 'online' : 'offline');
+                document.getElementById('server-status').textContent = 'Server connection: ' + (serverOnline ? 'ONLINE' : 'OFFLINE');
+                log('Server connection test: ' + (serverOnline ? 'SUCCESS' : 'FAILED'));
+                
+                return serverOnline;
+            } catch (error) {
+                document.getElementById('server-status').className = 'status offline';
+                document.getElementById('server-status').textContent = 'Server connection: OFFLINE (Error: ' + error.message + ')';
+                log('Server connection test: ERROR - ' + error.message);
+                return false;
+            }
+        }
+
+        // Test 3: Check if connectivity badge elements exist
+        function testConnectivityBadge() {
+            const badge = document.getElementById('connectivity-badge');
+                const text = document.getElementById('connectivity-text');
+                
+                if (badge && text) {
+                document.getElementById('connectivity-badge-status').className = 'status online';
+                document.getElementById('connectivity-badge-status').textContent = 'Connectivity badge elements: FOUND';
+                log('Connectivity badge elements: badge=' + !!badge + ', text=' + !!text);
+                return true;
+            } else {
+                document.getElementById('connectivity-badge-status').className = 'status offline';
+                document.getElementById('connectivity-badge-status').textContent = 'Connectivity badge elements: MISSING';
+                log('Connectivity badge elements: MISSING - badge=' + !!badge + ', text=' + !!text);
+                return false;
+            }
+        }
+
+        // Run tests
+        async function runTests() {
+            log('Starting connectivity tests...');
+            
+            testConnectivityBadge();
+            const serverOnline = await testServerConnection();
+            
+            log('Tests completed. Server is ' + (serverOnline ? 'ONLINE' : 'OFFLINE'));
+            
+            // Test the actual connectivity check function from script.js
+            log('Testing actual connectivity check function...');
+            
+            // Simulate the checkConnectivity function
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                
+                const response = await fetch('/style.css', {
+                    method: 'HEAD',
+                    signal: controller.signal,
+                    cache: 'no-cache'
+                });
+                
+                clearTimeout(timeoutId);
+                const isOnline = response.ok && navigator.onLine;
+                
+                log('Simulated connectivity check result: ' + (isOnline ? 'ONLINE' : 'OFFLINE'));
+                log('navigator.onLine: ' + navigator.onLine);
+                log('Server response: ' + response.status);
+                
+            } catch (error) {
+                log('Simulated connectivity check: OFFLINE - ' + error.message);
+            }
+        }
+
+        // Run tests when page loads
+        runTests();
+        
+        // Test every 5 seconds
+        setInterval(runTests, 5000);
+    </script>
+</body>
+</html>

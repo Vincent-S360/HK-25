@@ -4,30 +4,34 @@
 import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import { getAI, getGenerativeModel, GoogleAIBackend } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-ai.js';
 
-// Keep this in sync with Website-Interface/script.js
-const firebaseConfig = {
-  apiKey: "AIzaSyB6UekFOImueoeXSutffn5tazNDxxNo0IA",
-  authDomain: "salahe-d07fb.firebaseapp.com",
-  databaseURL: "https://salahe-d07fb-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "salahe-d07fb",
-  storageBucket: "salahe-d07fb.firebasestorage.app",
-  messagingSenderId: "613955008577",
-  appId: "1:613955008577:web:5026ff8bfa9c062fd6eec0"
-};
+// Use external config provided via window.SALAHE_FIREBASE_CONFIG
+const cfg = (typeof window !== 'undefined' && window.SALAHE_FIREBASE_CONFIG) ? window.SALAHE_FIREBASE_CONFIG : null;
 
-// Initialize a modular Firebase app for AI Logic usage
-const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+let ai = null;
+let firebaseApp = null;
 
-// Initialize the Gemini Developer API backend service
-const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+if (cfg) {
+  // Initialize a modular Firebase app for AI Logic usage
+  firebaseApp = getApps().length ? getApp() : initializeApp(cfg);
+  // Initialize the Gemini Developer API backend service
+  ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+} else {
+  console.warn('Firebase AI Logic not configured: window.SALAHE_FIREBASE_CONFIG missing');
+}
 
 // Helper to create a GenerativeModel instance
 function getModel(options) {
+  if (!ai) throw new Error('Firebase AI not configured');
   return getGenerativeModel(ai, options || { model: 'gemini-2.5-flash' });
 }
 
 // Simple test request to the model; emits a browser event with the result
 async function runGeminiTest() {
+  if (!ai) {
+    const error = 'Firebase AI not configured';
+    window.dispatchEvent(new CustomEvent('firebase-ai-test-result', { detail: { ok: false, error } }));
+    return error;
+  }
   try {
     const model = getModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent('Say hello from Firebase AI Logic in one sentence.');

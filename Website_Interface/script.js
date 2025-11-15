@@ -41,21 +41,25 @@ const qaMarket = document.getElementById('qa-market');
 const connectivityBadge = document.getElementById('connectivity-badge');
 const connectivityText = document.getElementById('connectivity-text');
 
-// Firebase configuration (updated)
-const firebaseConfig = {
-  apiKey: "AIzaSyB6UekFOImueoeXSutffn5tazNDxxNo0IA",
-  authDomain: "salahe-d07fb.firebaseapp.com",
-  databaseURL: "https://salahe-d07fb-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "salahe-d07fb",
-  storageBucket: "salahe-d07fb.firebasestorage.app",
-  messagingSenderId: "613955008577",
-  appId: "1:613955008577:web:5026ff8bfa9c062fd6eec0"
-};
-
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// Firebase configuration (public-safe)
+// Expect window.SALAHE_FIREBASE_CONFIG to be defined by an external file (firebase.config.js)
+let auth = null;
+let db = null;
+let firebaseEnabled = false;
+try {
+  const firebaseConfig = (window && window.SALAHE_FIREBASE_CONFIG) ? window.SALAHE_FIREBASE_CONFIG : null;
+  if (firebaseConfig && typeof firebase !== 'undefined' && firebase && firebase.initializeApp) {
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    firebaseEnabled = true;
+    console.info('Firebase initialized from external config.');
+  } else {
+    console.warn('Firebase not configured. Running in guest mode without auth/storage.');
+  }
+} catch (e) {
+  console.warn('Firebase initialization skipped:', e);
+}
 
 // Resolve API base for different preview contexts (backend server vs Live Server vs file://)
 const API_BASE = (function() {
@@ -530,29 +534,36 @@ const headerUser = document.getElementById('header-user');
 // Chat header logout
 const chatLogoutButton = document.getElementById('chat-logout-button');
 
-// Auth state observer
-auth.onAuthStateChanged((user) => {
-  if (user) {
-    currentUser = user;
-    ensureUserDoc();
-    handleLoginDefaults();
-    loadChatHistory();
-    hideAuthModal();
-    showToast(`Welcome ${user.displayName || user.email}!`, 'success');
-    if (pendingChatOpen) {
-      openChatInterface();
-      pendingChatOpen = false;
+// Auth state observer (guarded for guest mode)
+if (auth && auth.onAuthStateChanged) {
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      currentUser = user;
+      try { ensureUserDoc(); } catch (e) { console.warn('ensureUserDoc failed', e); }
+      try { handleLoginDefaults(); } catch (e) { console.warn('handleLoginDefaults failed', e); }
+      try { loadChatHistory(); } catch (e) { console.warn('loadChatHistory failed', e); }
+      hideAuthModal();
+      showToast(`Welcome ${user.displayName || user.email}!`, 'success');
+      if (pendingChatOpen) {
+        openChatInterface();
+        pendingChatOpen = false;
+      }
+      updateAuthHeaderUI();
+      try { loadChatHistoryList(); } catch (e) { console.warn('loadChatHistoryList failed', e); }
+      previousUserEmail = user.email;
+    } else {
+      currentUser = null;
+      currentChatId = null;
+      updateAuthHeaderUI();
+      try { loadChatHistoryList(); } catch (e) { console.warn('loadChatHistoryList failed', e); }
     }
-    updateAuthHeaderUI();
-    loadChatHistoryList(); // Load chat history for sidebar
-    previousUserEmail = user.email;
-  } else {
-    currentUser = null;
-    currentChatId = null;
-    updateAuthHeaderUI();
-    loadChatHistoryList(); // Update sidebar with login message
-  }
-});
+  });
+} else {
+  // Firebase not available: guest mode UI setup
+  currentUser = null;
+  currentChatId = null;
+  updateAuthHeaderUI();
+}
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', function() {
@@ -569,7 +580,7 @@ document.addEventListener('DOMContentLoaded', function() {
       applyPageLanguage(currentPageLanguage);
       // Persist locally and to Firestore when logged in
       try { localStorage.setItem('pageLanguage', currentPageLanguage); } catch (e) {}
-      if (currentUser) {
+      if (currentUser && db) {
         db.collection('users').doc(currentUser.email).set({
           prefLanguage: currentPageLanguage
         }, { merge: true }).catch(err => console.error('Persist prefLanguage error:', err));
@@ -1694,13 +1705,13 @@ function loadChatHistory() {
 
 // Ensure user document exists (keyed by email as requested)
 function ensureUserDoc() {
-  if (!currentUser) return;
+  if (!currentUser || !db) return;
   const userDocRef = db.collection('users').doc(currentUser.email);
   userDocRef.set({
     uid: currentUser.uid,
     email: currentUser.email,
     displayName: currentUser.displayName || null,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    createdAt: (firebase && firebase.firestore && firebase.firestore.FieldValue && firebase.firestore.FieldValue.serverTimestamp) ? firebase.firestore.FieldValue.serverTimestamp() : new Date()
   }, { merge: true }).catch(err => console.error('ensureUserDoc error:', err));
 }
 
@@ -1708,6 +1719,10 @@ function ensureUserDoc() {
 async function persistChatAndMessage(role, text) {
   if (!currentUser) {
     showToast('Please login to save chat history');
+    return;
+  }
+  if (!db) {
+    // Skip persistence in guest mode
     return;
   }
   try {
@@ -1721,7 +1736,7 @@ async function persistChatAndMessage(role, text) {
       const chatDoc = await db.collection('users').doc(currentUser.email)
         .collection('chats').add({
           title,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          timestamp: (firebase && firebase.firestore && firebase.firestore.FieldValue && firebase.firestore.FieldValue.serverTimestamp) ? firebase.firestore.FieldValue.serverTimestamp() : new Date(),
           language: currentPageLanguage || 'en'
         });
       currentChatId = chatDoc.id;
@@ -1734,7 +1749,7 @@ async function persistChatAndMessage(role, text) {
       .collection('messages').add({
         role,
         text,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        timestamp: (firebase && firebase.firestore && firebase.firestore.FieldValue && firebase.firestore.FieldValue.serverTimestamp) ? firebase.firestore.FieldValue.serverTimestamp() : new Date()
       });
   } catch (error) {
     console.error('persistChatAndMessage error:', error);

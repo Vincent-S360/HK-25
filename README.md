@@ -1,5 +1,7 @@
 # 🌾 Salahe — Smart AgriTech linked with Advice, Hub, and Emotion
 
+> Public setup guide: see `docs/PublicSetup.md` for adding your own API keys and Firebase config safely.
+
 > “A farmer shouldn’t need to learn technology.  
 > Technology should learn to speak the farmer’s language.”
 

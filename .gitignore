@@ -1,0 +1,10 @@
+# Secrets and local config
+Backend_confidential/keys.env
+Backend_confidential/.env
+Website_Interface/firebase.config.js
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
